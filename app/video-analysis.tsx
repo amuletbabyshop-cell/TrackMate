@@ -34,6 +34,17 @@ const THUMB_W     = 320
 
 /* ─── メイン ──────────────────────────────────── */
 export default function VideoAnalysis() {
+  const [premiumChecked, setPremiumChecked] = useState(false)
+  const [isPremiumUser, setIsPremiumUser]   = useState(false)
+
+  useEffect(() => {
+    isPremium().then(v => { setIsPremiumUser(v); setPremiumChecked(true) }).catch(() => setPremiumChecked(true))
+  }, [])
+
+  if (!premiumChecked) return (
+    <View style={s.center}><ActivityIndicator color="#E53E3E" /></View>
+  )
+
   if (Platform.OS !== 'web') {
     return (
       <View style={s.center}>
@@ -42,11 +53,60 @@ export default function VideoAnalysis() {
       </View>
     )
   }
-  return <WebPlayer />
+
+  return <WebPlayer isPremiumUser={isPremiumUser} />
+}
+
+/* ─── プレミアムゲート ──────────────────────────── */
+function PremiumGate() {
+  return (
+    <ScrollView contentContainerStyle={{ flexGrow: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+      <View style={{ alignItems: 'center', gap: 20, maxWidth: 400 }}>
+        <View style={{ width: 80, height: 80, borderRadius: 20, backgroundColor: '#E53E3E22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E53E3E44' }}>
+          <Ionicons name="videocam" size={36} color="#E53E3E" />
+        </View>
+        <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900', textAlign: 'center' }}>
+          フォーム動画分析
+        </Text>
+        <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14, textAlign: 'center', lineHeight: 22 }}>
+          AIによる動画フォーム分析は{'\n'}プレミアムプラン限定の機能です
+        </Text>
+
+        {/* 機能説明 */}
+        {[
+          { icon: '🎯', text: 'フレームごとのAIフォーム診断' },
+          { icon: '📊', text: '改善点・強化ポイントの詳細分析' },
+          { icon: '🏋️', text: 'パーソナル練習メニュー自動生成' },
+          { icon: '⚡', text: '高精度モデル（Claude Opus）使用' },
+        ].map((item, i) => (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, padding: 14 }}>
+            <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{item.text}</Text>
+          </View>
+        ))}
+
+        {/* 料金 */}
+        <View style={{ alignSelf: 'stretch', backgroundColor: 'rgba(229,62,62,0.1)', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: 'rgba(229,62,62,0.3)', alignItems: 'center', gap: 8 }}>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>プレミアムプラン</Text>
+          <Text style={{ color: '#fff', fontSize: 32, fontWeight: '900' }}>¥980<Text style={{ fontSize: 14, fontWeight: '400' }}>/月</Text></Text>
+          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>いつでもキャンセル可能</Text>
+        </View>
+
+        <View style={{ alignSelf: 'stretch', backgroundColor: 'rgba(155,107,255,0.1)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(155,107,255,0.3)', gap: 6 }}>
+          <Text style={{ color: '#9B6BFF', fontSize: 13, fontWeight: '800' }}>👥 チーム・学校向けプラン</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, lineHeight: 18 }}>部活・チーム全員で使えるプランは¥3,000/月〜{'\n'}設定画面からお問い合わせください</Text>
+        </View>
+
+        <Text style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, textAlign: 'center' }}>
+          ※ 現在サブスクリプション決済は準備中です{'\n'}リリース時にご登録のメールにご連絡します
+        </Text>
+      </View>
+    </ScrollView>
+  )
 }
 
 /* ─── Web専用プレーヤー ──────────────────────────── */
-function WebPlayer() {
+function WebPlayer({ isPremiumUser: isPremiumProp }: { isPremiumUser: boolean }) {
   /* ── refs ── */
   const videoRef      = useRef<HTMLVideoElement | null>(null)
   const canvasRef     = useRef<HTMLCanvasElement | null>(null)
@@ -67,11 +127,7 @@ function WebPlayer() {
   const [loadingComp, setLoadingComp] = useState(false)
   const [adGateVisible,     setAdGateVisible]     = useState(false)
   const [adGateHardLimited, setAdGateHardLimited] = useState(false)
-  const [isPremiumUser,     setIsPremiumUser]     = useState(false)
-
-  useEffect(() => {
-    isPremium().then(setIsPremiumUser).catch(() => {})
-  }, [])
+  const isPremiumUser = isPremiumProp
 
   const annotationsRef = useRef<Annotation[]>([])
   useEffect(() => { annotationsRef.current = annotations }, [annotations])

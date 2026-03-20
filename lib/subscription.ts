@@ -4,7 +4,7 @@ const KEY = 'trackmate_subscription'
 
 export interface Subscription {
   isPremium: boolean
-  plan: 'free' | 'premium'
+  plan: 'free' | 'premium' | 'team'
   expiresAt?: string
 }
 
@@ -22,6 +22,11 @@ export async function isPremium(): Promise<boolean> {
     return false
   }
   return true
+}
+
+export async function isTeamPlan(): Promise<boolean> {
+  const sub = await getSubscription()
+  return sub.plan === 'team' && sub.isPremium
 }
 
 // DEV ONLY — toggle premium for testing
