@@ -1,0 +1,105 @@
+// hooks/useTrainingSessions.ts — トレーニングセッション CRUD フック
+
+import { useState, useCallback } from 'react'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import type { TrainingSession, LoadingState } from '../types'
+
+const SESSIONS_KEY = 'trackmate_sessions'
+
+interface UseTrainingSessionsReturn {
+  sessions: TrainingSession[]
+  loading: LoadingState
+  error: string | null
+  fetchSessions: (userId: string, days?: number) => Promise<void>
+  addSession: (session: Omit<TrainingSession, 'id' | 'created_at'>) => Promise<TrainingSession | null>
+  updateSession: (id: string, updates: Partial<Omit<TrainingSession, 'id' | 'created_at'>>) => Promise<void>
+  getSessionById: (id: string) => TrainingSession | undefined
+}
+
+export function useTrainingSessions(): UseTrainingSessionsReturn {
+  const [sessions, setSessions] = useState<TrainingSession[]>([])
+  const [loading, setLoading] = useState<LoadingState>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  // ─────────────────────────────────────────
+  // セッション一覧取得
+  // ─────────────────────────────────────────
+  const fetchSessions = useCallback(async (_userId: string, _days = 30): Promise<void> => {
+    setLoading('loading')
+    setError(null)
+    try {
+      const raw = await AsyncStorage.getItem(SESSIONS_KEY)
+      const data: TrainingSession[] = raw ? JSON.parse(raw) : []
+      setSessions(data)
+      setLoading('success')
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '練習記録の取得に失敗しました'
+      setError(message)
+      setSessions([])
+      setLoading('success') // エラーでも空配列で続行
+    }
+  }, [])
+
+  // ─────────────────────────────────────────
+  // セッション追加（AsyncStorage に保存）
+  // ─────────────────────────────────────────
+  const addSession = useCallback(
+    async (
+      session: Omit<TrainingSession, 'id' | 'created_at'>
+    ): Promise<TrainingSession | null> => {
+      try {
+        const newSession: TrainingSession = {
+          ...session,
+          id: `local-${Date.now()}`,
+          created_at: new Date().toISOString(),
+        }
+        setSessions(prev => {
+          const next = [newSession, ...prev]
+          AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(next)).catch(() => {})
+          return next
+        })
+        return newSession
+      } catch {
+        return null
+      }
+    },
+    []
+  )
+
+  // ─────────────────────────────────────────
+  // セッション更新（AsyncStorage に保存）
+  // ─────────────────────────────────────────
+  const updateSession = useCallback(
+    async (
+      id: string,
+      updates: Partial<Omit<TrainingSession, 'id' | 'created_at'>>
+    ): Promise<void> => {
+      setSessions(prev => {
+        const next = prev.map(s => (s.id === id ? { ...s, ...updates } : s))
+        AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(next)).catch(() => {})
+        return next
+      })
+    },
+    []
+  )
+
+  // ─────────────────────────────────────────
+  // ID によるセッション検索（ローカルキャッシュから）
+  // ─────────────────────────────────────────
+  const getSessionById = useCallback(
+    (id: string): TrainingSession | undefined => {
+      return sessions.find(s => s.id === id)
+    },
+    [sessions]
+  )
+
+  return {
+    sessions,
+    loading,
+    error,
+    fetchSessions,
+    addSession,
+    updateSession,
+    getSessionById,
+  }
+}

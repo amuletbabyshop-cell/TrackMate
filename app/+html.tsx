@@ -1,0 +1,30 @@
+import { ScrollViewStyleReset } from 'expo-router/html'
+import type { PropsWithChildren } from 'react'
+
+export default function Root({ children }: PropsWithChildren) {
+  return (
+    <html lang="ja">
+      <head>
+        <meta charSet="utf-8" />
+        <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+        <ScrollViewStyleReset />
+        <style dangerouslySetInnerHTML={{ __html: `
+          @font-face {
+            font-family: 'Ionicons';
+            src: url('https://unpkg.com/@expo/vector-icons@15.0.3/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf') format('truetype');
+            font-display: block;
+          }
+          @font-face {
+            font-family: 'MaterialIcons';
+            src: url('https://unpkg.com/@expo/vector-icons@15.0.3/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf') format('truetype');
+            font-display: block;
+          }
+          * { box-sizing: border-box; }
+          body { overflow: hidden; }
+        `}} />
+      </head>
+      <body>{children}</body>
+    </html>
+  )
+}

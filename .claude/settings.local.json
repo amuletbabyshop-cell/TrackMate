@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(jobs -l)",
+      "Read(//tmp/**)",
+      "Bash(npx expo:*)",
+      "Bash(python3 -c \"import json,sys; p=json.load\\(sys.stdin\\); deps={**p.get\\(''''peerDependencies'''',{}\\), **p.get\\(''''dependencies'''',{}\\)}; [print\\(k,v\\) for k,v in sorted\\(deps.items\\(\\)\\)]\")",
+      "Bash(grep -E \"^\\(expo-constants|expo-status-bar|expo-splash-screen|expo-asset|expo-font|expo-haptics|react-native-gesture-handler|expo-modules-core\\)$\")",
+      "Bash(grep -E \"^\\(expo-status-bar|expo-splash-screen|react-native-gesture-handler|react-native-is-edge-to-edge\\)$\")",
+      "Bash(npm uninstall:*)",
+      "Bash(for f:*)",
+      "Bash(do echo:*)",
+      "Read(//Users/FOJPL/Documents/trackmate/**)",
+      "Bash(done)",
+      "Bash(do)",
+      "Bash(echo \"=== $f ===\")",
+      "Bash(echo \"===FILE: $f===\")",
+      "Bash(head:*)",
+      "Bash(wc:*)"
+    ]
+  }
+}

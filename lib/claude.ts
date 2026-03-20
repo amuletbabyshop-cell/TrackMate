@@ -1,0 +1,249 @@
+// lib/claude.ts — Claude API 全呼び出しをここに集約
+
+import Anthropic from '@anthropic-ai/sdk'
+import type {
+  VideoAnalysisResult,
+  MealAnalysisResult,
+  CompetitionPlan,
+  RecoveryStatus,
+  UserProfile,
+  SleepRecord,
+  TrainingSession,
+  AthleticsEvent,
+} from '../types'
+import { getVideoAnalysisPrompt } from '../prompts/video'
+import { getMealAnalysisPrompt, getCompetitionPlanPrompt, getSleepAdvicePrompt } from '../prompts/index'
+
+const MODEL = 'claude-sonnet-4-6'
+
+// ─────────────────────────────────────────
+// 型定義
+// ─────────────────────────────────────────
+type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+
+interface MessagesRequest {
+  model: string
+  max_tokens: number
+  system?: string
+  messages: Array<{ role: 'user' | 'assistant'; content: string | ContentBlock[] }>
+}
+
+// ─────────────────────────────────────────
+// Anthropic SDK ラッパー
+// ─────────────────────────────────────────
+async function callClaude(req: MessagesRequest): Promise<string> {
+  const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
+  console.log('[Claude] apiKey先頭:', apiKey ? apiKey.slice(0, 20) + '...' : 'undefined')
+  console.log('[Claude] model:', req.model, '/ max_tokens:', req.max_tokens)
+
+  if (!apiKey || apiKey === 'placeholder') {
+    throw new Error('EXPO_PUBLIC_ANTHROPIC_API_KEY が未設定です。.env.local を確認してください。')
+  }
+
+  const client = new Anthropic({
+    apiKey: process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ?? '',
+    dangerouslyAllowBrowser: true,
+  })
+
+  let response: Anthropic.Message
+  try {
+    response = await client.messages.create({
+      model: req.model,
+      max_tokens: req.max_tokens,
+      system: req.system,
+      messages: req.messages as any,
+    })
+  } catch (err) {
+    console.error('[Claude] SDK エラー:', err)
+    const msg = err instanceof Error ? err.message : String(err)
+    throw new Error(`Anthropic API エラー: ${msg}`)
+  }
+
+  console.log('[Claude] content blocks:', response.content?.length)
+  const block = response.content?.[0]
+  const text = block?.type === 'text' && block.text ? block.text : ''
+  console.log('[Claude] 返答先頭100文字:', text.slice(0, 100))
+  return text
+}
+
+// ─────────────────────────────────────────
+// base64からMIMEタイプを自動検出
+// ─────────────────────────────────────────
+function detectMediaType(base64: string): 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' {
+  const head = base64.slice(0, 12)
+  if (head.startsWith('/9j/')) return 'image/jpeg'
+  if (head.startsWith('iVBOR')) return 'image/png'
+  if (head.startsWith('R0lGOD')) return 'image/gif'
+  if (head.startsWith('UklGR')) return 'image/webp'
+  // デフォルトはJPEG
+  return 'image/jpeg'
+}
+
+// ─────────────────────────────────────────
+// JSONパース（安全版）
+// ─────────────────────────────────────────
+function safeParseJSON<T>(text: string): T {
+  const cleaned = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim()
+  return JSON.parse(cleaned) as T
+}
+
+// ─────────────────────────────────────────
+// 1. 動画分析
+// ─────────────────────────────────────────
+export async function analyzeVideo(
+  frameBase64List: string[],
+  event: AthleticsEvent
+): Promise<VideoAnalysisResult> {
+  const systemPrompt = getVideoAnalysisPrompt(event)
+
+  const imageContents: ContentBlock[] = frameBase64List.map(base64 => ({
+    type: 'image',
+    source: { type: 'base64', media_type: detectMediaType(base64), data: base64 },
+  }))
+
+  const text = await callClaude({
+    model: MODEL,
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          ...imageContents,
+          { type: 'text', text: `種目: ${event}。この種目のコーチとして詳しくフォームを分析し、JSONで返してください。` },
+        ],
+      },
+    ],
+  })
+
+  return safeParseJSON<VideoAnalysisResult>(text)
+}
+
+// ─────────────────────────────────────────
+// 2. 食事分析
+// ─────────────────────────────────────────
+export async function analyzeMeal(
+  imageBase64: string,
+  profile: UserProfile,
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'supplement',
+  trainingTiming: 'pre' | 'post' | 'none'
+): Promise<MealAnalysisResult> {
+  const systemPrompt = getMealAnalysisPrompt(mealType, profile.event_category, trainingTiming)
+
+  const text = await callClaude({
+    model: MODEL,
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: detectMediaType(imageBase64), data: imageBase64 } },
+          { type: 'text', text: '食事内容を分析してJSONで返してください。' },
+        ],
+      },
+    ],
+  })
+
+  return safeParseJSON<MealAnalysisResult>(text)
+}
+
+// ─────────────────────────────────────────
+// 3. 試合計画生成
+// ─────────────────────────────────────────
+export async function generateCompetitionPlan(
+  competitionDate: Date,
+  competitionName: string,
+  profile: UserProfile
+): Promise<CompetitionPlan['phases'] & { peak_week: number; taper_start_week: number; key_advice: string }> {
+  const daysLeft = Math.ceil((competitionDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+  if (daysLeft < 1) throw new Error('試合日が過去です')
+
+  const systemPrompt = getCompetitionPlanPrompt(daysLeft, profile, competitionName)
+
+  const text = await callClaude({
+    model: MODEL,
+    max_tokens: 3000,
+    system: systemPrompt,
+    messages: [
+      {
+        role: 'user',
+        content: `${daysLeft}日後の試合「${competitionName}」に向けた計画をJSONで作成してください。`,
+      },
+    ],
+  })
+
+  return safeParseJSON(text)
+}
+
+// ─────────────────────────────────────────
+// 4. 睡眠・回復アドバイス
+// ─────────────────────────────────────────
+export async function getRecoveryAdvice(
+  recentSleep: SleepRecord[],
+  recentSessions: TrainingSession[]
+): Promise<RecoveryStatus> {
+  const systemPrompt = getSleepAdvicePrompt(recentSleep, recentSessions)
+
+  const text = await callClaude({
+    model: MODEL,
+    max_tokens: 512,
+    system: systemPrompt,
+    messages: [
+      {
+        role: 'user',
+        content: '直近の睡眠とトレーニングデータに基づいて、今日のコンディションをJSONで評価してください。',
+      },
+    ],
+  })
+
+  return safeParseJSON<RecoveryStatus>(text)
+}
+
+// ─────────────────────────────────────────
+// 5. 週次トレーニングサマリー
+// ─────────────────────────────────────────
+export async function getWeeklySummary(
+  sessions: TrainingSession[],
+  profile: UserProfile
+): Promise<{ summary: string; next_week_focus: string; praise: string }> {
+  const sessionText = sessions
+    .map(s =>
+      `${s.session_date}: ${s.session_type} ${s.event ?? ''} ` +
+      `${s.time_ms ? formatMs(s.time_ms) : ''} 疲労${s.fatigue_level}/10`
+    )
+    .join('\n')
+
+  const text = await callClaude({
+    model: MODEL,
+    max_tokens: 512,
+    system: `あなたは${profile.event_category === 'sprint' ? '短距離' : '中長距離'}専門の陸上コーチです。
+選手の1週間の練習記録を見て、以下のJSONを返してください：
+{
+  "summary": "1週間の練習の総評（2文）",
+  "next_week_focus": "来週取り組むべきこと（1文）",
+  "praise": "選手への具体的な褒め言葉（1文）"
+}`,
+    messages: [
+      {
+        role: 'user',
+        content: `先週の練習記録：\n${sessionText || 'データなし'}`,
+      },
+    ],
+  })
+
+  return safeParseJSON(text)
+}
+
+// ─────────────────────────────────────────
+// ユーティリティ
+// ─────────────────────────────────────────
+function formatMs(ms: number): string {
+  const totalSec = ms / 1000
+  if (totalSec < 60) return `${totalSec.toFixed(2)}秒`
+  const min = Math.floor(totalSec / 60)
+  const sec = (totalSec % 60).toFixed(2)
+  return `${min}分${sec}秒`
+}

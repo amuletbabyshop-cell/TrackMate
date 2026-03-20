@@ -1,0 +1,437 @@
+// app/settings.tsx — 設定画面
+
+import React, { useState, useEffect } from 'react'
+import {
+  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  Switch, Alert, TextInput,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { Ionicons } from '@expo/vector-icons'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useRouter } from 'expo-router'
+
+import { useAuth } from '../context/AuthContext'
+import AnimatedSection from '../components/AnimatedSection'
+
+const PROFILE_KEY = 'trackmate_my_profile'
+const NOTIF_KEY   = 'trackmate_notif_settings'
+
+const EVENTS = [
+  '100m', '200m', '400m', '800m', '1500m', '5000m', '10000m',
+  'ハーフ', 'マラソン', '走幅跳', '三段跳', '棒高跳', '走高跳',
+  '砲丸投', '円盤投', 'やり投', 'ハンマー投', '400mH', '110mH', '100mH', '3000mSC',
+]
+
+interface Profile {
+  name: string
+  event: string
+  age: string
+  club: string
+}
+
+interface NotifSettings {
+  practiceReminder: boolean
+  raceReminder: boolean
+}
+
+// CSV エクスポート（Web のみ）
+async function exportCSV() {
+  try {
+    const [sessionsRaw, racesRaw] = await Promise.all([
+      AsyncStorage.getItem('trackmate_sessions'),
+      AsyncStorage.getItem('trackmate_race_records'),
+    ])
+
+    const sessions: any[] = sessionsRaw ? JSON.parse(sessionsRaw) : []
+    const races: any[]    = racesRaw    ? JSON.parse(racesRaw)    : []
+
+    let csv = 'type,id,date,event,value,note\n'
+
+    sessions.forEach((s: any) => {
+      const row = [
+        'session',
+        s.id ?? '',
+        s.session_date ?? '',
+        s.session_type ?? '',
+        s.distance_m != null ? `${s.distance_m}m` : s.time_ms != null ? `${s.time_ms}ms` : '',
+        (s.notes ?? '').replace(/,/g, '、'),
+      ]
+      csv += row.join(',') + '\n'
+    })
+
+    races.forEach((r: any) => {
+      const row = [
+        'race',
+        r.id ?? '',
+        r.race_date ?? '',
+        r.event ?? '',
+        r.time_ms != null ? `${r.time_ms}ms` : r.result ?? '',
+        (r.memo ?? '').replace(/,/g, '、'),
+      ]
+      csv += row.join(',') + '\n'
+    })
+
+    if (typeof document !== 'undefined') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `trackmate_${new Date().toISOString().slice(0, 10)}.csv`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    }
+  } catch (e) {
+    Alert.alert('エラー', 'エクスポートに失敗しました')
+  }
+}
+
+// ── セクション見出し付きカード ──────────────────────────────
+function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>{title}</Text>
+      {children}
+    </View>
+  )
+}
+
+// ── ラベル付き入力フィールド ────────────────────────────────
+function LabeledInput({
+  label, value, onChangeText, placeholder, keyboardType = 'default',
+}: {
+  label: string
+  value: string
+  onChangeText: (v: string) => void
+  placeholder?: string
+  keyboardType?: 'default' | 'numeric'
+}) {
+  return (
+    <View style={styles.fieldRow}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={styles.fieldInput}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder ?? ''}
+        placeholderTextColor="#444"
+        keyboardType={keyboardType}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+    </View>
+  )
+}
+
+// ── メイン設定画面 ─────────────────────────────────────────
+export default function SettingsScreen() {
+  const { user, signOut } = useAuth()
+  const router = useRouter()
+
+  // プロフィール
+  const [profile, setProfile] = useState<Profile>({ name: '', event: '', age: '', club: '' })
+
+  // 通知
+  const [notifSettings, setNotifSettings] = useState<NotifSettings>({
+    practiceReminder: false,
+    raceReminder: false,
+  })
+
+  // 読み込み
+  useEffect(() => {
+    AsyncStorage.getItem(PROFILE_KEY).then(v => {
+      if (v) {
+        const p = JSON.parse(v)
+        setProfile({ name: p.name ?? '', event: p.event ?? '', age: p.age != null ? String(p.age) : '', club: p.club ?? '' })
+      }
+    }).catch(() => {})
+
+    AsyncStorage.getItem(NOTIF_KEY).then(v => {
+      if (v) setNotifSettings(JSON.parse(v))
+    }).catch(() => {})
+  }, [])
+
+  // プロフィール保存
+  const saveProfile = async () => {
+    const toSave = {
+      name:  profile.name,
+      event: profile.event,
+      age:   profile.age ? Number(profile.age) : null,
+      club:  profile.club,
+    }
+    await AsyncStorage.setItem(PROFILE_KEY, JSON.stringify(toSave)).catch(() => {})
+    Alert.alert('保存しました')
+  }
+
+  // 通知トグル
+  const toggleNotif = (key: keyof NotifSettings, value: boolean) => {
+    const next = { ...notifSettings, [key]: value }
+    setNotifSettings(next)
+    AsyncStorage.setItem(NOTIF_KEY, JSON.stringify(next)).catch(() => {})
+  }
+
+  // ログアウト
+  const handleSignOut = () => {
+    Alert.alert(
+      'ログアウト',
+      'ログアウトしますか？',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        { text: 'ログアウト', style: 'destructive', onPress: () => signOut() },
+      ]
+    )
+  }
+
+  // キャッシュクリア
+  const handleClearCache = () => {
+    Alert.alert(
+      'キャッシュをクリア',
+      'アプリのキャッシュデータをすべて削除します。この操作は取り消せません。',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除', style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.clear().catch(() => {})
+            Alert.alert('完了', 'キャッシュを削除しました')
+          },
+        },
+      ]
+    )
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
+          {/* ── プロフィール ───────────────────────────────────── */}
+          <AnimatedSection delay={0}>
+            <SectionCard title="プロフィール">
+              <LabeledInput
+                label="名前"
+                value={profile.name}
+                onChangeText={v => setProfile(p => ({ ...p, name: v }))}
+                placeholder="田中 太郎"
+              />
+              <View style={styles.divider} />
+
+              {/* 種目タグ */}
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>種目</Text>
+              </View>
+              <View style={styles.tagWrap}>
+                {EVENTS.map(ev => {
+                  const active = profile.event === ev
+                  return (
+                    <TouchableOpacity
+                      key={ev}
+                      style={[styles.tag, active ? styles.tagActive : styles.tagInactive]}
+                      onPress={() => setProfile(p => ({ ...p, event: p.event === ev ? '' : ev }))}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.tagText, active && { color: '#fff' }]}>{ev}</Text>
+                    </TouchableOpacity>
+                  )
+                })}
+              </View>
+
+              <View style={styles.divider} />
+              <LabeledInput
+                label="年齢"
+                value={profile.age}
+                onChangeText={v => setProfile(p => ({ ...p, age: v.replace(/[^0-9]/g, '') }))}
+                placeholder="20"
+                keyboardType="numeric"
+              />
+              <View style={styles.divider} />
+              <LabeledInput
+                label="所属"
+                value={profile.club}
+                onChangeText={v => setProfile(p => ({ ...p, club: v }))}
+                placeholder="〇〇陸上クラブ"
+              />
+
+              <TouchableOpacity style={styles.saveBtn} onPress={saveProfile} activeOpacity={0.85}>
+                <Text style={styles.saveBtnText}>保存する</Text>
+              </TouchableOpacity>
+            </SectionCard>
+          </AnimatedSection>
+
+          {/* ── アカウント ─────────────────────────────────────── */}
+          <AnimatedSection delay={80}>
+            <SectionCard title="アカウント">
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>メールアドレス</Text>
+                <Text style={styles.fieldValue} numberOfLines={1}>
+                  {user?.email ?? '未ログイン'}
+                </Text>
+              </View>
+              <View style={styles.divider} />
+              <TouchableOpacity style={styles.dangerRow} onPress={handleSignOut} activeOpacity={0.75}>
+                <Ionicons name="log-out-outline" size={18} color="#E53935" />
+                <Text style={styles.dangerText}>ログアウト</Text>
+              </TouchableOpacity>
+            </SectionCard>
+          </AnimatedSection>
+
+          {/* ── 通知設定 ──────────────────────────────────────── */}
+          <AnimatedSection delay={160}>
+            <SectionCard title="通知設定">
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>練習リマインダー</Text>
+                <Switch
+                  value={notifSettings.practiceReminder}
+                  onValueChange={v => toggleNotif('practiceReminder', v)}
+                  trackColor={{ false: '#333', true: '#E53935' }}
+                  thumbColor="#fff"
+                  ios_backgroundColor="#333"
+                />
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>大会リマインダー</Text>
+                <Switch
+                  value={notifSettings.raceReminder}
+                  onValueChange={v => toggleNotif('raceReminder', v)}
+                  trackColor={{ false: '#333', true: '#E53935' }}
+                  thumbColor="#fff"
+                  ios_backgroundColor="#333"
+                />
+              </View>
+            </SectionCard>
+          </AnimatedSection>
+
+          {/* ── データ ───────────────────────────────────────── */}
+          <AnimatedSection delay={240}>
+            <SectionCard title="データ">
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={exportCSV}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="download-outline" size={18} color="#fff" />
+                <Text style={styles.actionText}>記録をCSVでエクスポート</Text>
+                <Ionicons name="chevron-forward" size={16} color="#555" />
+              </TouchableOpacity>
+              <View style={styles.divider} />
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={handleClearCache}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="trash-outline" size={18} color="#E53935" />
+                <Text style={[styles.actionText, { color: '#E53935' }]}>キャッシュをクリア</Text>
+                <Ionicons name="chevron-forward" size={16} color="#555" />
+              </TouchableOpacity>
+            </SectionCard>
+          </AnimatedSection>
+
+          {/* ── アプリ情報 ────────────────────────────────────── */}
+          <AnimatedSection delay={320}>
+            <SectionCard title="アプリ情報">
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>バージョン</Text>
+                <Text style={styles.fieldValue}>1.0.0</Text>
+              </View>
+              <View style={styles.divider} />
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => router.push('/privacy')}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="shield-checkmark-outline" size={18} color="#fff" />
+                <Text style={styles.actionText}>プライバシーポリシー</Text>
+                <Ionicons name="chevron-forward" size={16} color="#555" />
+              </TouchableOpacity>
+              <View style={styles.divider} />
+              <TouchableOpacity
+                style={styles.actionRow}
+                onPress={() => router.push('/terms')}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="document-text-outline" size={18} color="#fff" />
+                <Text style={styles.actionText}>利用規約</Text>
+                <Ionicons name="chevron-forward" size={16} color="#555" />
+              </TouchableOpacity>
+              <View style={styles.divider} />
+              <View style={[styles.fieldRow, { paddingBottom: 4 }]}>
+                <Text style={{ color: '#555', fontSize: 12, textAlign: 'center', flex: 1 }}>
+                  Made with ❤️ for athletes
+                </Text>
+              </View>
+            </SectionCard>
+          </AnimatedSection>
+
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  content: { paddingBottom: 48 },
+
+  // カードセクション
+  card: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+    margin: 16,
+    padding: 16,
+  },
+  cardTitle: {
+    color: '#E53935',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+  },
+
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.06)', marginVertical: 10 },
+
+  // フィールド行
+  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 36 },
+  fieldLabel: { color: '#888', fontSize: 12, flex: 0, minWidth: 72 },
+  fieldValue: { color: '#fff', fontSize: 16, flex: 1, textAlign: 'right' },
+  fieldInput: {
+    flex: 1, color: '#fff', fontSize: 16,
+    textAlign: 'right',
+    // @ts-ignore
+    outlineStyle: 'none',
+  },
+
+  // 種目タグ
+  tagWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6, marginBottom: 6 },
+  tag: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20, borderWidth: 1,
+  },
+  tagActive:   { backgroundColor: '#E53935', borderColor: '#E53935' },
+  tagInactive: { backgroundColor: 'transparent', borderColor: '#E53935' },
+  tagText:     { color: '#E53935', fontSize: 12, fontWeight: '700' },
+
+  // 保存ボタン
+  saveBtn: {
+    marginTop: 14,
+    backgroundColor: '#E53935', borderRadius: 12,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  saveBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  // ログアウト行
+  dangerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 10,
+  },
+  dangerText: { color: '#E53935', fontSize: 15, fontWeight: '700' },
+
+  // Switch 行
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  switchLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  // アクション行（データ）
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  actionText: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
+})
