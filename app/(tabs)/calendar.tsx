@@ -5,8 +5,7 @@ import {
   Animated, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { LinearGradient } from 'expo-linear-gradient'
-import { BG_GRADIENT, TEXT, SURFACE, SURFACE2, DIVIDER, NEON, BRAND } from '../../lib/theme'
+import { TEXT, SURFACE, SURFACE2, DIVIDER, NEON, BRAND } from '../../lib/theme'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Sounds, unlockAudio } from '../../lib/sounds'
@@ -364,7 +363,7 @@ export default function CalendarScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <LinearGradient colors={BG_GRADIENT} style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]} />
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll}>
 
@@ -412,6 +411,7 @@ export default function CalendarScreen() {
                     dots={dayMap[ymd] ?? []}
                     dow={(firstDow + day - 1) % 7}
                     onPress={() => setSelectedDate(ymd)}
+                    previewLabel={recordMap[ymd]?.[0]?.label}
                   />
                 )
               })}
@@ -509,9 +509,10 @@ export default function CalendarScreen() {
 }
 
 // ── DayCell ────────────────────────────────────────────────
-function DayCell({ day, isToday, isSelected, dots, dow, onPress }: {
+function DayCell({ day, isToday, isSelected, dots, dow, onPress, previewLabel }: {
   day: number; isToday: boolean; isSelected: boolean
   dots: DotType[]; dow: number; onPress: () => void
+  previewLabel?: string
 }) {
   const scale = useRef(new Animated.Value(1)).current
   function press() {
@@ -525,6 +526,12 @@ function DayCell({ day, isToday, isSelected, dots, dow, onPress }: {
     : dow === 0 ? '#E53935'
     : dow === 6 ? '#2196F3'
     : '#ccc'
+
+  // Strip leading emoji (e.g. "📝 ") and take first 5 chars
+  const preview = previewLabel
+    ? previewLabel.replace(/^[\p{Emoji}\s]+/u, '').slice(0, 5)
+    : undefined
+
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={press} style={st.dayCell}>
       <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
@@ -540,6 +547,9 @@ function DayCell({ day, isToday, isSelected, dots, dow, onPress }: {
             ))}
           </View>
         )}
+        {preview ? (
+          <Text style={st.dayPreview} numberOfLines={1}>{preview}</Text>
+        ) : null}
       </Animated.View>
     </TouchableOpacity>
   )
@@ -600,12 +610,13 @@ const st = StyleSheet.create({
   weekRow:     { flexDirection: 'row', marginBottom: 6 },
   weekLbl:     { flex: 1, textAlign: 'center', color: '#666', fontSize: 12, fontWeight: '700' },
   grid:        { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell:     { width: `${100 / 7}%`, aspectRatio: 0.85, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 4 },
+  dayCell:     { width: `${100 / 7}%`, aspectRatio: 0.75, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 4 },
   dayNum:      { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   todayBg:     { backgroundColor: '#E53935' },
   selBg:       { backgroundColor: 'rgba(255,255,255,0.15)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   dotsRow:     { flexDirection: 'row', gap: 2, marginTop: 2, height: 5, alignItems: 'center' },
   dot:         { width: 4, height: 4, borderRadius: 2 },
+  dayPreview:  { fontSize: 8, color: '#888', marginTop: 2, maxWidth: 36, textAlign: 'center' },
 
   // Detail
   detailCard:   { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 14, gap: 10 },

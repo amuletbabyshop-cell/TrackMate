@@ -5,11 +5,11 @@ import {
   Animated, Alert,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { LinearGradient } from 'expo-linear-gradient'
+
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Toast from 'react-native-toast-message'
-import { BG_GRADIENT, BRAND, TEXT, NEON } from '../../lib/theme'
+import { BRAND, TEXT, NEON } from '../../lib/theme'
 import { Sounds, unlockAudio } from '../../lib/sounds'
 import AnimatedSection from '../../components/AnimatedSection'
 import { useAuth } from '../../context/AuthContext'
@@ -460,7 +460,7 @@ export default function TeamScreen() {
   // ══════════════════════════════════════════════════════════════
   return (
     <View style={{ flex: 1 }}>
-      <LinearGradient colors={BG_GRADIENT} style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]} />
       <SafeAreaView style={styles.safe}>
 
         {/* ヘッダー */}
