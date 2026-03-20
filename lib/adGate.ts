@@ -7,16 +7,16 @@ export type Feature = 'video' | 'meal' | 'recovery'
 
 // 広告なしで使える回数（無料枠）
 export const FREE_LIMITS: Record<Feature, number> = {
-  video:    1,  // お試し1回のみ（プレミアム限定機能）
-  meal:     2,  // 食事分析は中コスト
-  recovery: 3,  // リカバリーはテキストのみで安い
+  video:    999,
+  meal:     999,
+  recovery: 999,
 }
 
 // 広告を見ても超えられない1日の絶対上限
 export const HARD_LIMITS: Record<Feature, number> = {
-  video:    1,  // 無料は1回まで（お試し）
-  meal:     3,
-  recovery: 5,
+  video:    999,
+  meal:     999,
+  recovery: 999,
 }
 
 interface DailyUsage {

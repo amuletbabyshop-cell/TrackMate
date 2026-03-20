@@ -54,7 +54,7 @@ export default function VideoAnalysis() {
     )
   }
 
-  return <WebPlayer isPremiumUser={isPremiumUser} />
+  return <WebPlayer isPremiumUser={true} />
 }
 
 /* ─── プレミアムゲート ──────────────────────────── */
