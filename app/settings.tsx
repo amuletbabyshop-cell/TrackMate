@@ -173,14 +173,21 @@ export default function SettingsScreen() {
 
   // ログアウト
   const handleSignOut = () => {
-    Alert.alert(
-      'ログアウト',
-      'ログアウトしますか？',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        { text: 'ログアウト', style: 'destructive', onPress: () => signOut() },
-      ]
-    )
+    if (typeof window !== 'undefined') {
+      // Web: window.confirm を使用
+      if (window.confirm('ログアウトしますか？')) {
+        signOut()
+      }
+    } else {
+      Alert.alert(
+        'ログアウト',
+        'ログアウトしますか？',
+        [
+          { text: 'キャンセル', style: 'cancel' },
+          { text: 'ログアウト', style: 'destructive', onPress: () => signOut() },
+        ]
+      )
+    }
   }
 
   // キャッシュクリア
