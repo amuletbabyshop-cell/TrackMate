@@ -87,6 +87,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="team"
+        options={{
+          title: 'チーム',
+          tabBarIcon: tabIcon('people-outline', 'people'),
+        }}
+      />
+      <Tabs.Screen
         name="mypage"
         options={{
           title: 'マイページ',
@@ -95,7 +102,7 @@ export default function TabLayout() {
       />
 
       {/* ── 非表示タブ（タブバーに出さないが route として有効） ── */}
-      {(['records','nutrition','competition','sleep','team'] as const).map(name => (
+      {(['records','nutrition','competition','sleep'] as const).map(name => (
         <Tabs.Screen
           key={name}
           name={name}
