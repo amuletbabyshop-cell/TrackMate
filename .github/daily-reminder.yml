@@ -1,0 +1,23 @@
+name: 毎日19時 練習リマインダー通知
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+jobs:
+  send-reminder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: OneSignalに通知送信
+        run: |
+          curl -X POST https://onesignal.com/api/v1/notifications \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Basic ${{ secrets.ONESIGNAL_REST_API_KEY }}" \
+            -d '{
+              "app_id": "${{ secrets.ONESIGNAL_APP_ID }}",
+              "headings": {"ja": "📝 TrackMate"},
+              "contents": {"ja": "今日の練習を記録しましょう 💪"},
+              "url": "https://track-mate-murex.vercel.app",
+              "included_segments": ["All"]
+            }'
