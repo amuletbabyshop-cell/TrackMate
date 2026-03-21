@@ -13,7 +13,7 @@ import { BRAND, TEXT } from '../lib/theme'
 import { Sounds, unlockAudio } from '../lib/sounds'
 
 export default function AuthScreen() {
-  const { signInWithGoogle, signUpWithEmail, signInWithEmail } = useAuth()
+  const { signInWithGoogle, signUpWithEmail, signInWithEmail, continueAsGuest } = useAuth()
   const [googleLoading, setGoogleLoading] = useState(false)
   const [showSignup, setShowSignup] = useState(false)
   const [email, setEmail] = useState('')
@@ -164,6 +164,18 @@ export default function AuthScreen() {
             )}
           </Animated.View>
 
+          {/* ゲストログイン */}
+          <Animated.View style={{ opacity: contentOpac, marginTop: 4 }}>
+            <TouchableOpacity
+              style={styles.guestBtn}
+              onPress={() => { unlockAudio(); Sounds.tap(); continueAsGuest() }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="person-outline" size={16} color={TEXT.hint} />
+              <Text style={styles.guestText}>ゲストとして続ける</Text>
+            </TouchableOpacity>
+          </Animated.View>
+
           <Animated.Text style={[styles.footer, { opacity: contentOpac }]}>
             ログインすることで利用規約とプライバシーポリシーに同意したことになります
           </Animated.Text>
@@ -215,6 +227,9 @@ const styles = StyleSheet.create({
 
   primaryBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 16 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+
+  guestBtn:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14 },
+  guestText: { color: TEXT.hint, fontSize: 14 },
 
   footer: { color: TEXT.hint, fontSize: 10, textAlign: 'center', paddingVertical: 20, lineHeight: 16 },
 })

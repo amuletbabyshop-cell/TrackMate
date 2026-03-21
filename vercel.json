@@ -2,5 +2,11 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "buildCommand": "npx expo export --platform web",
   "outputDirectory": "dist",
-  "framework": null
+  "framework": null,
+  "crons": [
+    {
+      "path": "/api/daily-reminder",
+      "schedule": "0 10 * * *"
+    }
+  ]
 }
