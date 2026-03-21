@@ -13,8 +13,11 @@ import { useRouter } from 'expo-router'
 import { useAuth } from '../context/AuthContext'
 import AnimatedSection from '../components/AnimatedSection'
 
-const PROFILE_KEY = 'trackmate_my_profile'
-const NOTIF_KEY   = 'trackmate_notif_settings'
+const PROFILE_KEY   = 'trackmate_my_profile'
+const NOTIF_KEY     = 'trackmate_notif_settings'
+const TEAM_ROLE_KEY = 'trackmate_team_role'
+const TEAM_SETUP_KEY   = 'trackmate_team_setup'
+const TEAM_JOINED_KEY  = 'trackmate_team_joined'
 
 const EVENTS = [
   '100m', '200m', '400m', '800m', '1500m', '5000m', '10000m',
@@ -131,6 +134,12 @@ export default function SettingsScreen() {
 
   // プロフィール
   const [profile, setProfile] = useState<Profile>({ name: '', event: '', age: '', club: '' })
+
+  // チームロール
+  const [teamRole, setTeamRole] = useState<string | null>(null)
+  useEffect(() => {
+    AsyncStorage.getItem(TEAM_ROLE_KEY).then(v => setTeamRole(v)).catch(() => {})
+  }, [])
 
   // 通知
   const [notifSettings, setNotifSettings] = useState<NotifSettings>({
@@ -279,6 +288,52 @@ export default function SettingsScreen() {
               <TouchableOpacity style={styles.dangerRow} onPress={handleSignOut} activeOpacity={0.75}>
                 <Ionicons name="log-out-outline" size={18} color="#E53935" />
                 <Text style={styles.dangerText}>ログアウト</Text>
+              </TouchableOpacity>
+            </SectionCard>
+          </AnimatedSection>
+
+          {/* ── チーム設定 ────────────────────────────────────── */}
+          <AnimatedSection delay={120}>
+            <SectionCard title="チーム設定">
+              <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>現在のロール</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {teamRole === 'coach' && (
+                    <View style={{ backgroundColor: '#E53935' + '20', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ color: '#E53935', fontSize: 12, fontWeight: '700' }}>コーチ・監督</Text>
+                    </View>
+                  )}
+                  {teamRole === 'player' && (
+                    <View style={{ backgroundColor: '#34C759' + '20', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                      <Text style={{ color: '#34C759', fontSize: 12, fontWeight: '700' }}>選手</Text>
+                    </View>
+                  )}
+                  {!teamRole && <Text style={styles.fieldValue}>未設定</Text>}
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <TouchableOpacity
+                style={styles.actionRow}
+                activeOpacity={0.75}
+                onPress={async () => {
+                  const doSwitch = async () => {
+                    await AsyncStorage.multiRemove([TEAM_ROLE_KEY, TEAM_SETUP_KEY, TEAM_JOINED_KEY])
+                    setTeamRole(null)
+                    router.push('/(tabs)/team')
+                  }
+                  if (typeof window !== 'undefined') {
+                    if (window.confirm('チームのロール設定をリセットします。チームタブで再設定できます。')) doSwitch()
+                  } else {
+                    Alert.alert('ロールを切り替え', 'チームのロール設定をリセットします。', [
+                      { text: 'キャンセル', style: 'cancel' },
+                      { text: 'リセット', style: 'destructive', onPress: doSwitch },
+                    ])
+                  }
+                }}
+              >
+                <Ionicons name="swap-horizontal-outline" size={18} color="#fff" />
+                <Text style={styles.actionText}>コーチ ↔ 選手を切り替え</Text>
+                <Ionicons name="chevron-forward" size={16} color="#555" />
               </TouchableOpacity>
             </SectionCard>
           </AnimatedSection>
