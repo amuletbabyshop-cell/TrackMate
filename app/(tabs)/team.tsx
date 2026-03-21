@@ -1,4 +1,4 @@
-// app/(tabs)/team.tsx — チーム機能 v3（コーチ/選手 完全分離）
+// app/(tabs)/team.tsx — チーム機能 v3（Supabase同期 + OneSignal通知）
 import React, { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
@@ -11,28 +11,30 @@ import Toast from 'react-native-toast-message'
 import { BRAND, TEXT } from '../../lib/theme'
 import { calcInjuryRisk } from '../../lib/injuryRisk'
 import type { TrainingSession } from '../../types'
+import {
+  fetchMessages, postMessage, setPinMessage, deleteMessage,
+  fetchVideos, submitVideo, markVideoWatched,
+  fetchBodyReports, upsertBodyReport,
+  fetchMembers, registerMember,
+  type TeamMessageRow, type TeamVideoRow, type BodyReportRow, type TeamMemberRow,
+} from '../../lib/supabaseTeam'
+import {
+  initOneSignal, requestPushPermission, registerUserTags, sendPush,
+} from '../../lib/notify'
 
-// ── ストレージキー ─────────────────────────────────────────
+// ── ストレージキー（ローカル設定のみ） ────────────────────
 const ROLE_KEY     = 'trackmate_team_role'
 const SESSIONS_KEY = 'trackmate_sessions'
 const SETUP_KEY    = 'trackmate_team_setup'
 const JOINED_KEY   = 'trackmate_team_joined'
-const MESSAGES_KEY = 'trackmate_team_messages'
-const BODY_KEY     = 'trackmate_team_body'    // 自分の痛み部位報告
-const VIDEOS_KEY   = 'trackmate_team_videos'  // 動画投稿リスト
 
 type Role = 'coach' | 'player'
-const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000
 
 // ── 型定義 ────────────────────────────────────────────────
 interface TeamSetup  { teamName: string; coachName: string; code: string; createdAt: string }
 interface JoinedTeam { code: string; teamName: string; coachName: string; playerName: string; joinedAt: string }
-interface TeamMessage { id: string; content: string; authorName: string; timestamp: string; isPinned: boolean }
-interface BodyReport  { parts: string[]; updatedAt: string }
-interface VideoEntry  {
-  id: string; playerName: string; description: string
-  url: string; postedAt: string; watched: boolean
-}
+type TeamMessage = TeamMessageRow
+type VideoEntry  = TeamVideoRow
 
 // ── 痛み部位リスト ────────────────────────────────────────
 const BODY_PARTS = [
@@ -51,7 +53,7 @@ const BODY_PARTS = [
   { id: 'ankle_l',    label: '左足首',   side: 'left' },
 ]
 
-// ── デモメンバー ──────────────────────────────────────────
+// ── デモメンバー（Supabaseにデータがない時のフォールバック）─
 type Member = { id: string; name: string; event: string; sessions: TrainingSession[]; lastActive: string; painParts?: string[] }
 const DEMO_MEMBERS: Member[] = [
   {
@@ -83,7 +85,7 @@ const DEMO_MEMBERS: Member[] = [
     id: 'demo-ito', name: '伊藤 拓海', event: '1500m',
     lastActive: new Date().toISOString().slice(0, 10),
     sessions: [
-      { id:'s5', user_id:'demo-ito', session_date: new Date().toISOString().slice(0,10), session_type:'easy', fatigue_level:2, condition_level:9, distance_m:8000, created_at:'' },
+      { id:'s6', user_id:'demo-ito', session_date: new Date().toISOString().slice(0,10), session_type:'easy', fatigue_level:2, condition_level:9, distance_m:8000, created_at:'' },
     ],
   },
 ]
@@ -162,8 +164,8 @@ function PainBadges({ parts }: { parts: string[] }) {
 // ─────────────────────────────────────────────────────────
 // VideoSubmitModal — 動画URL送信（選手用）
 // ─────────────────────────────────────────────────────────
-function VideoSubmitModal({ visible, playerName, onClose, onSent }: {
-  visible: boolean; playerName: string; onClose: () => void; onSent: () => void
+function VideoSubmitModal({ visible, teamCode, playerName, onClose, onSent }: {
+  visible: boolean; teamCode: string; playerName: string; onClose: () => void; onSent: () => void
 }) {
   const [url,  setUrl]  = useState('')
   const [desc, setDesc] = useState('')
@@ -173,12 +175,12 @@ function VideoSubmitModal({ visible, playerName, onClose, onSent }: {
     if (!url.trim()) { Toast.show({type:'error',text1:'URLを入力してください'}); return }
     setBusy(true)
     try {
-      const raw = await AsyncStorage.getItem(VIDEOS_KEY)
-      const list: VideoEntry[] = raw ? JSON.parse(raw) : []
-      list.unshift({ id:`v_${Date.now()}`, playerName, description:desc.trim()||'動画を送りました', url:url.trim(), postedAt:new Date().toISOString(), watched:false })
-      await AsyncStorage.setItem(VIDEOS_KEY, JSON.stringify(list))
+      await submitVideo(teamCode, playerName, url.trim(), desc.trim() || '動画を送りました')
+      await sendPush(`🎥 ${playerName}`, desc.trim() || '動画を送りました', 'coaches', teamCode)
       Toast.show({type:'success',text1:'動画を送りました ✓',visibilityTime:1800})
       setUrl(''); setDesc(''); onSent(); onClose()
+    } catch {
+      Toast.show({type:'error',text1:'送信に失敗しました'})
     } finally { setBusy(false) }
   }
 
@@ -343,14 +345,23 @@ function PlayerJoinScreen({ onJoined, onBack }: { onJoined:(j:JoinedTeam)=>void;
     if (!playerName.trim())  { Toast.show({type:'error',text1:'名前を入力してください'}); return }
     setBusy(true)
     try {
+      // ローカルにコーチ設定があれば照合（なければそのまま参加）
       const raw = await AsyncStorage.getItem(SETUP_KEY)
       let teamName='チーム', coachName='コーチ'
-      if (raw) { const s: TeamSetup = JSON.parse(raw); if(s.code===cleaned){teamName=s.teamName;coachName=s.coachName} else {teamName='デモチーム';coachName='デモコーチ'} }
-      else { teamName='デモチーム'; coachName='デモコーチ' }
+      if (raw) {
+        const s: TeamSetup = JSON.parse(raw)
+        if (s.code === cleaned) { teamName = s.teamName; coachName = s.coachName }
+      }
       const j: JoinedTeam = { code:cleaned, teamName, coachName, playerName:playerName.trim(), joinedAt:new Date().toISOString() }
       await AsyncStorage.setItem(JOINED_KEY, JSON.stringify(j))
-      Toast.show({type:'success',text1:`${teamName} に参加しました！`,visibilityTime:2000})
+      // Supabaseにメンバー登録
+      await registerMember(cleaned, playerName.trim(), '')
+      // コーチに通知
+      await sendPush(`👋 新メンバー`, `${playerName.trim()} がチームに参加しました`, 'coaches', cleaned)
+      Toast.show({type:'success',text1:`チームに参加しました！`,visibilityTime:2000})
       onJoined(j)
+    } catch {
+      Toast.show({type:'error',text1:'参加に失敗しました。もう一度お試しください'})
     } finally { setBusy(false) }
   }
 
@@ -388,7 +399,12 @@ function PlayerJoinScreen({ onJoined, onBack }: { onJoined:(j:JoinedTeam)=>void;
               <Text style={su.label}>あなたの名前</Text>
               <TextInput style={su.input} value={playerName} onChangeText={setPlayerName} placeholder="例: 田中 翼" placeholderTextColor="#444" maxLength={20}/>
             </View>
-            <TouchableOpacity style={[{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:'#34C759',borderRadius:14,paddingVertical:15},(code.replace(/[^A-Za-z0-9]/g,'').length<6||busy)&&{opacity:0.4}]} onPress={join} disabled={code.replace(/[^A-Za-z0-9]/g,'').length<6||busy} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={[{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:'#34C759',borderRadius:14,paddingVertical:15},(code.replace(/[^A-Za-z0-9]/g,'').length<6||busy)&&{opacity:0.4}]}
+              onPress={join}
+              disabled={code.replace(/[^A-Za-z0-9]/g,'').length<6||busy}
+              activeOpacity={0.85}
+            >
               <Ionicons name="enter-outline" size={20} color="#fff"/>
               <Text style={{color:'#fff',fontSize:16,fontWeight:'800'}}>{busy?'参加中...':'チームに参加する'}</Text>
             </TouchableOpacity>
@@ -405,47 +421,82 @@ function PlayerJoinScreen({ onJoined, onBack }: { onJoined:(j:JoinedTeam)=>void;
 function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => void }) {
   const [messages, setMessages] = useState<TeamMessage[]>([])
   const [videos,   setVideos]   = useState<VideoEntry[]>([])
+  const [members,  setMembers]  = useState<TeamMemberRow[]>([])
+  const [bodyReports, setBodyReports] = useState<BodyReportRow[]>([])
   const [msgText,  setMsgText]  = useState('')
   const [tab,      setTab]      = useState<'members'|'messages'|'videos'>('members')
   const [detailMember, setDetailMember] = useState<Member|null>(null)
 
   const load = useCallback(async () => {
-    const [mr, vr] = await Promise.all([AsyncStorage.getItem(MESSAGES_KEY), AsyncStorage.getItem(VIDEOS_KEY)])
-    setMessages(mr ? JSON.parse(mr) : [])
-    // 7日以上古い動画を自動削除
-    const vlist: VideoEntry[] = vr ? JSON.parse(vr) : []
-    const fresh = vlist.filter(v => Date.now()-new Date(v.postedAt).getTime() < SEVEN_DAYS)
-    if (fresh.length !== vlist.length) await AsyncStorage.setItem(VIDEOS_KEY, JSON.stringify(fresh))
-    setVideos(fresh)
-  }, [])
+    const [msgs, vids, mems, rpts] = await Promise.all([
+      fetchMessages(setup.code),
+      fetchVideos(setup.code),
+      fetchMembers(setup.code),
+      fetchBodyReports(setup.code),
+    ])
+    setMessages(msgs)
+    setVideos(vids)
+    setMembers(mems)
+    setBodyReports(rpts)
+  }, [setup.code])
 
   useEffect(() => { load() }, [load])
 
+  // 通知許可 + タグ登録
+  useEffect(() => {
+    (async () => {
+      await initOneSignal()
+      await requestPushPermission()
+      await registerUserTags('coach', setup.code)
+    })()
+  }, [setup.code])
+
   async function sendMessage() {
     if (!msgText.trim()) return
-    const msg: TeamMessage = { id:`m_${Date.now()}`, content:msgText.trim(), authorName:setup.coachName, timestamp:new Date().toISOString(), isPinned:false }
-    const updated = [msg, ...messages]
-    await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(updated))
-    setMessages(updated); setMsgText('')
+    await postMessage(setup.code, msgText.trim(), setup.coachName)
+    await sendPush(`📣 ${setup.teamName}`, msgText.trim(), 'players', setup.code)
+    setMsgText('')
+    await load()
     Toast.show({type:'success',text1:'送信しました',visibilityTime:1400})
   }
 
-  async function togglePin(id: string) {
-    const updated = messages.map(m => m.id===id?{...m,isPinned:!m.isPinned}:m)
-    setMessages(updated); await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(updated))
-  }
-  async function deleteMsg(id: string) {
-    const updated = messages.filter(m => m.id!==id)
-    setMessages(updated); await AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(updated))
-  }
-  async function markWatched(id: string) {
-    const updated = videos.map(v => v.id===id?{...v,watched:true}:v)
-    setVideos(updated); await AsyncStorage.setItem(VIDEOS_KEY, JSON.stringify(updated))
+  async function togglePin(id: string, current: boolean) {
+    await setPinMessage(id, !current)
+    setMessages(prev => prev.map(m => m.id===id ? {...m, is_pinned:!current} : m))
+    if (!current) {
+      const msg = messages.find(m => m.id===id)
+      if (msg) await sendPush('📌 重要なお知らせ', msg.content, 'players', setup.code)
+    }
   }
 
-  const highRisk   = DEMO_MEMBERS.filter(m => calcInjuryRisk(m.sessions,[],m.sessions[0]?.condition_level??6).riskScore>=50).length
-  const hasPain    = DEMO_MEMBERS.filter(m => m.painParts?.length).length
-  const newVideos  = videos.filter(v => !v.watched).length
+  async function deleteMsg(id: string) {
+    await deleteMessage(id)
+    setMessages(prev => prev.filter(m => m.id!==id))
+  }
+
+  async function markWatched(id: string) {
+    await markVideoWatched(id)
+    setVideos(prev => prev.map(v => v.id===id ? {...v, watched:true} : v))
+  }
+
+  // 実メンバーをDEMO_MEMBERSと同じ型に変換（痛みデータをマージ）
+  const displayMembers: Member[] = members.length > 0
+    ? members.map(m => {
+        const rpt = bodyReports.find(r => r.player_name === m.player_name)
+        return {
+          id: m.id,
+          name: m.player_name,
+          event: m.event || '',
+          lastActive: m.joined_at,
+          painParts: rpt?.parts ?? [],
+          sessions: [],
+        }
+      })
+    : DEMO_MEMBERS
+
+  const highRisk  = displayMembers.filter(m => m.sessions.length > 0 && calcInjuryRisk(m.sessions,[],m.sessions[0]?.condition_level??6).riskScore>=50).length
+  const hasPain   = displayMembers.filter(m => (m.painParts?.length ?? 0) > 0).length
+  const newVideos = videos.filter(v => !v.watched).length
 
   return (
     <View style={{flex:1,backgroundColor:'#000'}}>
@@ -463,7 +514,6 @@ function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => v
             </View>
           </View>
           <View style={{flexDirection:'row',gap:8,alignItems:'center'}}>
-            {/* 参加コード */}
             <View style={co.codeBox}>
               <Text style={{color:'#555',fontSize:9,fontWeight:'700'}}>参加コード</Text>
               <Text style={{color:BRAND,fontSize:15,fontWeight:'900',letterSpacing:3}}>{formatCode(setup.code)}</Text>
@@ -499,8 +549,13 @@ function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => v
                   {hasPain>0  && <View style={[co.alertChip,{borderColor:'#FF9500'+'40',backgroundColor:'#FF9500'+'10'}]}><Text style={{color:'#FF9500',fontSize:12,fontWeight:'700'}}>痛み報告 {hasPain}人</Text></View>}
                 </View>
               )}
+              {members.length === 0 && (
+                <View style={{backgroundColor:'rgba(255,255,255,0.04)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',padding:14,marginBottom:4}}>
+                  <Text style={{color:'#555',fontSize:12,textAlign:'center'}}>※ デモデータを表示中。選手がコード「{formatCode(setup.code)}」で参加するとここに表示されます</Text>
+                </View>
+              )}
               <View style={{gap:10}}>
-                {DEMO_MEMBERS.map(m => {
+                {displayMembers.map(m => {
                   const last    = m.sessions[0]
                   const fat     = fatigueInfo(last?.fatigue_level ?? 6)
                   const risk    = calcInjuryRisk(m.sessions, [], last?.condition_level ?? 6)
@@ -511,17 +566,21 @@ function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => v
                       <View style={{flex:1,gap:4}}>
                         <View style={{flexDirection:'row',alignItems:'center',gap:8}}>
                           <Text style={{color:'#fff',fontSize:15,fontWeight:'800'}}>{m.name}</Text>
-                          <Text style={{color:'#555',fontSize:11}}>{m.event}</Text>
+                          {m.event ? <Text style={{color:'#555',fontSize:11}}>{m.event}</Text> : null}
                         </View>
                         <View style={{flexDirection:'row',alignItems:'center',gap:10}}>
                           <Text style={{fontSize:18}}>{fat.emoji}</Text>
                           <Text style={{color:fat.color,fontSize:12,fontWeight:'700'}}>{fat.label}</Text>
-                          <View style={{width:5,height:5,borderRadius:3,backgroundColor:rColor}}/>
-                          <Text style={{color:rColor,fontSize:11,fontWeight:'700'}}>
-                            {risk.riskScore>=50?'要注意':risk.riskScore>=25?'注意':'良好'}
-                          </Text>
+                          {m.sessions.length > 0 && (
+                            <>
+                              <View style={{width:5,height:5,borderRadius:3,backgroundColor:rColor}}/>
+                              <Text style={{color:rColor,fontSize:11,fontWeight:'700'}}>
+                                {risk.riskScore>=50?'要注意':risk.riskScore>=25?'注意':'良好'}
+                              </Text>
+                            </>
+                          )}
                         </View>
-                        {m.painParts && <PainBadges parts={m.painParts}/>}
+                        {(m.painParts?.length ?? 0) > 0 && <PainBadges parts={m.painParts!}/>}
                       </View>
                       <View style={{alignItems:'flex-end',gap:4}}>
                         <Text style={{color:'#555',fontSize:10}}>{daysSince(m.lastActive)}</Text>
@@ -537,7 +596,6 @@ function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => v
           {/* ═══ アナウンスタブ ═══ */}
           {tab === 'messages' && (
             <>
-              {/* 送信フォーム */}
               <View style={co.composeBox}>
                 <TextInput
                   style={co.composeInput}
@@ -561,13 +619,13 @@ function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => v
               ) : (
                 <View style={{gap:8}}>
                   {messages.map(msg => (
-                    <View key={msg.id} style={[co.msgCard, msg.isPinned&&{borderColor:'#FF9500'+'50',backgroundColor:'rgba(255,149,0,0.06)'}]}>
+                    <View key={msg.id} style={[co.msgCard, msg.is_pinned&&{borderColor:'#FF9500'+'50',backgroundColor:'rgba(255,149,0,0.06)'}]}>
                       <View style={{flexDirection:'row',alignItems:'center',gap:6,marginBottom:6}}>
-                        {msg.isPinned && <Ionicons name="pin" size={12} color="#FF9500"/>}
-                        <Text style={{color:BRAND,fontSize:12,fontWeight:'700',flex:1}}>{msg.authorName}</Text>
-                        <Text style={{color:'#555',fontSize:11}}>{timeAgo(msg.timestamp)}</Text>
-                        <TouchableOpacity onPress={() => togglePin(msg.id)} hitSlop={{top:8,bottom:8,left:8,right:8}}>
-                          <Ionicons name={msg.isPinned?'pin':'pin-outline'} size={14} color={msg.isPinned?'#FF9500':'#444'}/>
+                        {msg.is_pinned && <Ionicons name="pin" size={12} color="#FF9500"/>}
+                        <Text style={{color:BRAND,fontSize:12,fontWeight:'700',flex:1}}>{msg.author_name}</Text>
+                        <Text style={{color:'#555',fontSize:11}}>{timeAgo(msg.created_at)}</Text>
+                        <TouchableOpacity onPress={() => togglePin(msg.id, msg.is_pinned)} hitSlop={{top:8,bottom:8,left:8,right:8}}>
+                          <Ionicons name={msg.is_pinned?'pin':'pin-outline'} size={14} color={msg.is_pinned?'#FF9500':'#444'}/>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={() => deleteMsg(msg.id)} hitSlop={{top:8,bottom:8,left:8,right:8}}>
                           <Ionicons name="trash-outline" size={14} color="#FF3B30"/>
@@ -600,13 +658,13 @@ function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => v
                         </View>
                         <View style={{flex:1,gap:3}}>
                           <View style={{flexDirection:'row',alignItems:'center',gap:6}}>
-                            <Text style={{color:'#fff',fontSize:14,fontWeight:'700'}}>{v.playerName}</Text>
+                            <Text style={{color:'#fff',fontSize:14,fontWeight:'700'}}>{v.player_name}</Text>
                             {!v.watched && <View style={{backgroundColor:BRAND,borderRadius:4,paddingHorizontal:5,paddingVertical:1}}><Text style={{color:'#fff',fontSize:9,fontWeight:'800'}}>NEW</Text></View>}
                           </View>
                           <Text style={{color:TEXT.secondary,fontSize:13}}>{v.description}</Text>
                           <View style={{flexDirection:'row',gap:8}}>
-                            <Text style={{color:'#555',fontSize:11}}>{timeAgo(v.postedAt)}</Text>
-                            <Text style={{color:'#444',fontSize:11}}>あと{daysLeft(v.postedAt)}日</Text>
+                            <Text style={{color:'#555',fontSize:11}}>{timeAgo(v.posted_at)}</Text>
+                            <Text style={{color:'#444',fontSize:11}}>あと{daysLeft(v.posted_at)}日</Text>
                           </View>
                         </View>
                       </View>
@@ -628,7 +686,6 @@ function CoachDashboard({ setup, onReset }: { setup: TeamSetup; onReset: () => v
         </ScrollView>
       </SafeAreaView>
 
-      {/* メンバー詳細 */}
       {detailMember && <MemberDetailSheet member={detailMember} onClose={() => setDetailMember(null)}/>}
     </View>
   )
@@ -652,36 +709,44 @@ function MemberDetailSheet({ member, onClose }: { member: Member; onClose: () =>
             <Ionicons name="close" size={22} color={TEXT.secondary}/>
           </TouchableOpacity>
         </View>
-        <View style={{flexDirection:'row',gap:10,marginBottom:14}}>
-          <View style={{flex:1,alignItems:'center',backgroundColor:'rgba(255,255,255,0.05)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',paddingVertical:14,gap:4}}>
-            <Text style={{fontSize:26}}>{fat.emoji}</Text>
-            <Text style={{color:fat.color,fontSize:12,fontWeight:'700'}}>{fat.label}</Text>
-            <Text style={{color:'#555',fontSize:10}}>疲労度</Text>
+        {member.sessions.length > 0 ? (
+          <>
+            <View style={{flexDirection:'row',gap:10,marginBottom:14}}>
+              <View style={{flex:1,alignItems:'center',backgroundColor:'rgba(255,255,255,0.05)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',paddingVertical:14,gap:4}}>
+                <Text style={{fontSize:26}}>{fat.emoji}</Text>
+                <Text style={{color:fat.color,fontSize:12,fontWeight:'700'}}>{fat.label}</Text>
+                <Text style={{color:'#555',fontSize:10}}>疲労度</Text>
+              </View>
+              <View style={{flex:1,alignItems:'center',backgroundColor:'rgba(255,255,255,0.05)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',paddingVertical:14,gap:4}}>
+                <Text style={{color:risk.signalColor,fontSize:22,fontWeight:'800'}}>{risk.riskScore}</Text>
+                <Text style={{color:risk.signalColor,fontSize:11,fontWeight:'700'}}>{risk.label}</Text>
+                <Text style={{color:'#555',fontSize:10}}>怪我リスク</Text>
+              </View>
+              <View style={{flex:1,alignItems:'center',backgroundColor:'rgba(255,255,255,0.05)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',paddingVertical:14,gap:4}}>
+                <Text style={{color:'#fff',fontSize:20,fontWeight:'800'}}>{risk.weeklyKm}<Text style={{fontSize:10,color:'#666'}}>km</Text></Text>
+                <Text style={{color:'#666',fontSize:11}}>先週{risk.prevWeeklyKm}km</Text>
+                <Text style={{color:'#555',fontSize:10}}>今週距離</Text>
+              </View>
+            </View>
+            {risk.reasons.length > 0 && (
+              <View style={{backgroundColor:'rgba(255,149,0,0.08)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,149,0,0.3)',padding:12,marginBottom:10}}>
+                <Text style={{color:'#fff',fontSize:13,fontWeight:'700',marginBottom:8}}>⚠️ 注意ポイント</Text>
+                {risk.reasons.map((r,i) => <Text key={i} style={{color:TEXT.secondary,fontSize:12,lineHeight:20}}>• {r}</Text>)}
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={{backgroundColor:'rgba(255,255,255,0.04)',borderRadius:12,padding:14,marginBottom:10,alignItems:'center'}}>
+            <Text style={{color:'#555',fontSize:12}}>まだ練習データがありません</Text>
           </View>
-          <View style={{flex:1,alignItems:'center',backgroundColor:'rgba(255,255,255,0.05)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',paddingVertical:14,gap:4}}>
-            <Text style={{color:risk.signalColor,fontSize:22,fontWeight:'800'}}>{risk.riskScore}</Text>
-            <Text style={{color:risk.signalColor,fontSize:11,fontWeight:'700'}}>{risk.label}</Text>
-            <Text style={{color:'#555',fontSize:10}}>怪我リスク</Text>
-          </View>
-          <View style={{flex:1,alignItems:'center',backgroundColor:'rgba(255,255,255,0.05)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',paddingVertical:14,gap:4}}>
-            <Text style={{color:'#fff',fontSize:20,fontWeight:'800'}}>{risk.weeklyKm}<Text style={{fontSize:10,color:'#666'}}>km</Text></Text>
-            <Text style={{color:'#666',fontSize:11}}>先週{risk.prevWeeklyKm}km</Text>
-            <Text style={{color:'#555',fontSize:10}}>今週距離</Text>
-          </View>
-        </View>
-        {member.painParts && member.painParts.length > 0 && (
+        )}
+        {(member.painParts?.length ?? 0) > 0 && (
           <View style={{backgroundColor:'rgba(255,59,48,0.08)',borderRadius:12,borderWidth:1,borderColor:'#FF3B30'+'30',padding:12,marginBottom:10}}>
             <Text style={{color:'#FF3B30',fontSize:13,fontWeight:'700',marginBottom:8}}>🤕 痛み・違和感の報告</Text>
-            <PainBadges parts={member.painParts}/>
+            <PainBadges parts={member.painParts!}/>
           </View>
         )}
-        {risk.reasons.length > 0 && (
-          <View style={{backgroundColor:'rgba(255,149,0,0.08)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,149,0,0.3)',padding:12}}>
-            <Text style={{color:'#fff',fontSize:13,fontWeight:'700',marginBottom:8}}>⚠️ 注意ポイント</Text>
-            {risk.reasons.map((r,i) => <Text key={i} style={{color:TEXT.secondary,fontSize:12,lineHeight:20}}>• {r}</Text>)}
-          </View>
-        )}
-        <Text style={{color:'#444',fontSize:11,textAlign:'center',marginTop:14}}>最終練習: {daysSince(member.lastActive)}</Text>
+        <Text style={{color:'#444',fontSize:11,textAlign:'center',marginTop:14}}>参加日: {daysSince(member.lastActive)}</Text>
       </View>
     </View>
   )
@@ -691,38 +756,52 @@ function MemberDetailSheet({ member, onClose }: { member: Member; onClose: () =>
 // PlayerDashboard
 // ─────────────────────────────────────────────────────────
 function PlayerDashboard({ joined, onReset }: { joined: JoinedTeam; onReset: () => void }) {
-  const [sessions,     setSessions]     = useState<TrainingSession[]>([])
-  const [messages,     setMessages]     = useState<TeamMessage[]>([])
-  const [bodyParts,    setBodyParts]    = useState<string[]>([])
-  const [showBody,     setShowBody]     = useState(false)
+  const [sessions,       setSessions]       = useState<TrainingSession[]>([])
+  const [messages,       setMessages]       = useState<TeamMessage[]>([])
+  const [bodyParts,      setBodyParts]      = useState<string[]>([])
+  const [showBody,       setShowBody]       = useState(false)
   const [showVideoModal, setShowVideoModal] = useState(false)
-  const [editBody,     setEditBody]     = useState<string[]>([])
+  const [editBody,       setEditBody]       = useState<string[]>([])
 
   const load = useCallback(async () => {
-    const [sr, mr, br] = await Promise.all([
+    const [sr, msgs, rpts] = await Promise.all([
       AsyncStorage.getItem(SESSIONS_KEY),
-      AsyncStorage.getItem(MESSAGES_KEY),
-      AsyncStorage.getItem(BODY_KEY),
+      fetchMessages(joined.code),
+      fetchBodyReports(joined.code),
     ])
     setSessions(sr ? JSON.parse(sr) : [])
-    setMessages(mr ? JSON.parse(mr) : [])
-    if (br) { const r: BodyReport = JSON.parse(br); setBodyParts(r.parts) }
-  }, [])
+    setMessages(msgs)
+    const myReport = rpts.find(r => r.player_name === joined.playerName)
+    if (myReport) setBodyParts(myReport.parts)
+  }, [joined.code, joined.playerName])
 
   useEffect(() => { load() }, [load])
 
+  // 通知許可 + タグ登録
+  useEffect(() => {
+    (async () => {
+      await initOneSignal()
+      await requestPushPermission()
+      await registerUserTags('player', joined.code)
+    })()
+  }, [joined.code])
+
   async function saveBodyReport() {
-    const report: BodyReport = { parts: editBody, updatedAt: new Date().toISOString() }
-    await AsyncStorage.setItem(BODY_KEY, JSON.stringify(report))
+    await upsertBodyReport(joined.code, joined.playerName, editBody)
     setBodyParts(editBody); setShowBody(false)
+    // 痛みがある場合はコーチに通知
+    if (editBody.length > 0) {
+      const labels = editBody.map(id => BODY_PARTS.find(p=>p.id===id)?.label??id).join('、')
+      await sendPush(`🤕 ${joined.playerName}`, `痛み報告: ${labels}`, 'coaches', joined.code)
+    }
     Toast.show({type:'success',text1:'痛みの報告を送りました',visibilityTime:1600})
   }
 
   const last    = sessions[0]
   const fat     = last ? fatigueInfo(last.fatigue_level) : null
   const risk    = calcInjuryRisk(sessions, [], last?.condition_level ?? 7)
-  const pinned  = messages.filter(m => m.isPinned)
-  const regular = messages.filter(m => !m.isPinned)
+  const pinned  = messages.filter(m => m.is_pinned)
+  const regular = messages.filter(m => !m.is_pinned)
 
   return (
     <View style={{flex:1,backgroundColor:'#000'}}>
@@ -764,7 +843,7 @@ function PlayerDashboard({ joined, onReset }: { joined: JoinedTeam; onReset: () 
               <Text style={pl.sectionTitle}>📌 コーチからのお知らせ</Text>
               {pinned.map(m => (
                 <View key={m.id} style={{backgroundColor:'rgba(255,149,0,0.08)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,149,0,0.4)',padding:14}}>
-                  <Text style={{color:'#FF9500',fontSize:11,fontWeight:'700',marginBottom:6}}>📌 {m.authorName} · {timeAgo(m.timestamp)}</Text>
+                  <Text style={{color:'#FF9500',fontSize:11,fontWeight:'700',marginBottom:6}}>📌 {m.author_name} · {timeAgo(m.created_at)}</Text>
                   <Text style={{color:'#ddd',fontSize:14,lineHeight:22}}>{m.content}</Text>
                 </View>
               ))}
@@ -777,7 +856,7 @@ function PlayerDashboard({ joined, onReset }: { joined: JoinedTeam; onReset: () 
               <Text style={pl.sectionTitle}>📣 コーチからのメッセージ</Text>
               {regular.slice(0,5).map(m => (
                 <View key={m.id} style={{backgroundColor:'rgba(255,255,255,0.05)',borderRadius:12,borderWidth:1,borderColor:'rgba(255,255,255,0.08)',padding:14}}>
-                  <Text style={{color:BRAND,fontSize:11,fontWeight:'700',marginBottom:6}}>{m.authorName} · {timeAgo(m.timestamp)}</Text>
+                  <Text style={{color:BRAND,fontSize:11,fontWeight:'700',marginBottom:6}}>{m.author_name} · {timeAgo(m.created_at)}</Text>
                   <Text style={{color:'#ddd',fontSize:14,lineHeight:22}}>{m.content}</Text>
                 </View>
               ))}
@@ -832,13 +911,12 @@ function PlayerDashboard({ joined, onReset }: { joined: JoinedTeam; onReset: () 
               痛い箇所をタップして選択してください（複数OK）。コーチに伝わります。
             </Text>
             <BodyPartSelector selected={editBody} onChange={setEditBody}/>
-            {editBody.length > 0 && (
+            {editBody.length > 0 ? (
               <TouchableOpacity style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:BRAND,borderRadius:14,paddingVertical:14,marginTop:16}} onPress={saveBodyReport} activeOpacity={0.85}>
                 <Ionicons name="send" size={18} color="#fff"/>
                 <Text style={{color:'#fff',fontSize:15,fontWeight:'800'}}>コーチに報告する</Text>
               </TouchableOpacity>
-            )}
-            {editBody.length === 0 && (
+            ) : (
               <TouchableOpacity style={{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:'rgba(255,255,255,0.06)',borderRadius:14,paddingVertical:14,marginTop:16}} onPress={saveBodyReport} activeOpacity={0.85}>
                 <Text style={{color:'#888',fontSize:15,fontWeight:'700'}}>痛みなし（クリア）</Text>
               </TouchableOpacity>
@@ -848,7 +926,13 @@ function PlayerDashboard({ joined, onReset }: { joined: JoinedTeam; onReset: () 
       </Modal>
 
       {/* 動画送信モーダル */}
-      <VideoSubmitModal visible={showVideoModal} playerName={joined.playerName} onClose={() => setShowVideoModal(false)} onSent={load}/>
+      <VideoSubmitModal
+        visible={showVideoModal}
+        teamCode={joined.code}
+        playerName={joined.playerName}
+        onClose={() => setShowVideoModal(false)}
+        onSent={load}
+      />
     </View>
   )
 }
@@ -887,25 +971,42 @@ export default function TeamScreen() {
 
   useEffect(() => {
     async function init() {
-      const [roleRaw, setupRaw, joinedRaw] = await Promise.all([AsyncStorage.getItem(ROLE_KEY),AsyncStorage.getItem(SETUP_KEY),AsyncStorage.getItem(JOINED_KEY)])
+      // OneSignal 初期化（早めに呼ぶ）
+      initOneSignal()
+      const [roleRaw, setupRaw, joinedRaw] = await Promise.all([
+        AsyncStorage.getItem(ROLE_KEY),
+        AsyncStorage.getItem(SETUP_KEY),
+        AsyncStorage.getItem(JOINED_KEY),
+      ])
       const role = roleRaw as Role|null
       if (!role) { setState('select-role'); return }
-      if (role === 'coach') { if (setupRaw) { setSetup(JSON.parse(setupRaw)); setState('coach') } else { setState('coach-setup') } }
-      else { if (joinedRaw) { setJoined(JSON.parse(joinedRaw)); setState('player') } else { setState('player-join') } }
+      if (role === 'coach') {
+        if (setupRaw) { setSetup(JSON.parse(setupRaw)); setState('coach') }
+        else { setState('coach-setup') }
+      } else {
+        if (joinedRaw) { setJoined(JSON.parse(joinedRaw)); setState('player') }
+        else { setState('player-join') }
+      }
     }
     init()
   }, [])
 
-  async function handleSelectRole(role: Role) { await AsyncStorage.setItem(ROLE_KEY, role); setState(role==='coach'?'coach-setup':'player-join') }
+  async function handleSelectRole(role: Role) {
+    await AsyncStorage.setItem(ROLE_KEY, role)
+    setState(role==='coach' ? 'coach-setup' : 'player-join')
+  }
   function handleCoachCreated(s: TeamSetup) { setSetup(s); setState('coach') }
   function handlePlayerJoined(j: JoinedTeam) { setJoined(j); setState('player') }
-  async function handleReset() { await AsyncStorage.multiRemove([ROLE_KEY,SETUP_KEY,JOINED_KEY]); setSetup(null); setJoined(null); setState('select-role') }
+  async function handleReset() {
+    await AsyncStorage.multiRemove([ROLE_KEY, SETUP_KEY, JOINED_KEY])
+    setSetup(null); setJoined(null); setState('select-role')
+  }
 
-  if (state==='loading')              return <View style={{flex:1,backgroundColor:'#000'}}/>
-  if (state==='select-role')          return <RoleSelectionScreen onSelect={handleSelectRole}/>
-  if (state==='coach-setup')          return <CoachSetupScreen onCreated={handleCoachCreated} onBack={() => setState('select-role')}/>
-  if (state==='coach' && setup)       return <CoachDashboard setup={setup} onReset={handleReset}/>
-  if (state==='player-join')          return <PlayerJoinScreen onJoined={handlePlayerJoined} onBack={() => setState('select-role')}/>
-  if (state==='player' && joined)     return <PlayerDashboard joined={joined} onReset={handleReset}/>
+  if (state==='loading')           return <View style={{flex:1,backgroundColor:'#000'}}/>
+  if (state==='select-role')       return <RoleSelectionScreen onSelect={handleSelectRole}/>
+  if (state==='coach-setup')       return <CoachSetupScreen onCreated={handleCoachCreated} onBack={() => setState('select-role')}/>
+  if (state==='coach' && setup)    return <CoachDashboard setup={setup} onReset={handleReset}/>
+  if (state==='player-join')       return <PlayerJoinScreen onJoined={handlePlayerJoined} onBack={() => setState('select-role')}/>
+  if (state==='player' && joined)  return <PlayerDashboard joined={joined} onReset={handleReset}/>
   return <View style={{flex:1,backgroundColor:'#000'}}/>
 }
