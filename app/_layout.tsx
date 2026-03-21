@@ -8,6 +8,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { Ionicons } from '@expo/vector-icons'
 import { AuthProvider, useAuth } from '../context/AuthContext'
 import SplashAnimation from '../components/SplashAnimation'
+import { initOneSignal, requestPushPermission } from '../lib/notify'
 
 if (Platform.OS !== 'web') {
   SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -68,6 +69,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 function RootLayoutNav() {
   const router = useRouter()
+
+  // アプリ起動時に通知許可をリクエスト
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      initOneSignal().then(() => requestPushPermission())
+    }
+  }, [])
+
   const [fontsLoaded] = Font.useFonts({
     'Ionicons': require('../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf'),
   })
