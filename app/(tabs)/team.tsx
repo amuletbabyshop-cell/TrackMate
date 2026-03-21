@@ -305,7 +305,7 @@ const rs = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────
 // CoachSetupScreen（チーム作成）
 // ─────────────────────────────────────────────────────────────
-function CoachSetupScreen({ onCreated }: { onCreated: (setup: TeamSetup) => void }) {
+function CoachSetupScreen({ onCreated, onBack }: { onCreated: (setup: TeamSetup) => void; onBack: () => void }) {
   const [teamName,  setTeamName]  = useState('')
   const [coachName, setCoachName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -331,6 +331,12 @@ function CoachSetupScreen({ onCreated }: { onCreated: (setup: TeamSetup) => void
       <SafeAreaView style={{ flex:1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex:1 }}>
           <ScrollView contentContainerStyle={{ padding:24, gap:20 }} showsVerticalScrollIndicator={false}>
+            {/* 戻るボタン */}
+            <TouchableOpacity onPress={onBack} style={{ flexDirection:'row', alignItems:'center', gap:6, alignSelf:'flex-start' }} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={20} color={TEXT.secondary} />
+              <Text style={{ color:TEXT.secondary, fontSize:14 }}>戻る</Text>
+            </TouchableOpacity>
+
             <View style={{ alignItems:'center', gap:8, marginBottom:8 }}>
               <View style={{ width:64, height:64, borderRadius:18, backgroundColor:BRAND+'20', alignItems:'center', justifyContent:'center' }}>
                 <Ionicons name="shield-checkmark" size={32} color={BRAND} />
@@ -389,7 +395,7 @@ const setup_s = StyleSheet.create({
 // ─────────────────────────────────────────────────────────────
 // PlayerJoinScreen（コード入力）
 // ─────────────────────────────────────────────────────────────
-function PlayerJoinScreen({ onJoined }: { onJoined: (joined: JoinedTeam) => void }) {
+function PlayerJoinScreen({ onJoined, onBack }: { onJoined: (joined: JoinedTeam) => void; onBack: () => void }) {
   const [code,    setCode]    = useState('')
   const [joining, setJoining] = useState(false)
 
@@ -437,6 +443,12 @@ function PlayerJoinScreen({ onJoined }: { onJoined: (joined: JoinedTeam) => void
       <SafeAreaView style={{ flex:1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex:1 }}>
           <ScrollView contentContainerStyle={{ padding:24, gap:20 }} showsVerticalScrollIndicator={false}>
+            {/* 戻るボタン */}
+            <TouchableOpacity onPress={onBack} style={{ flexDirection:'row', alignItems:'center', gap:6, alignSelf:'flex-start' }} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={20} color={TEXT.secondary} />
+              <Text style={{ color:TEXT.secondary, fontSize:14 }}>戻る</Text>
+            </TouchableOpacity>
+
             <View style={{ alignItems:'center', gap:8, marginBottom:8 }}>
               <View style={{ width:64, height:64, borderRadius:18, backgroundColor:'#34C759'+'20', alignItems:'center', justifyContent:'center' }}>
                 <Ionicons name="enter-outline" size={32} color="#34C759" />
@@ -980,9 +992,9 @@ export default function TeamScreen() {
 
   if (state === 'loading') return <View style={{ flex:1, backgroundColor:'#000' }} />
   if (state === 'select-role')  return <RoleSelectionScreen onSelect={handleSelectRole} />
-  if (state === 'coach-setup')  return <CoachSetupScreen onCreated={handleCoachCreated} />
+  if (state === 'coach-setup')  return <CoachSetupScreen onCreated={handleCoachCreated} onBack={() => setState('select-role')} />
   if (state === 'coach' && setup) return <CoachDashboard setup={setup} onReset={handleReset} />
-  if (state === 'player-join')  return <PlayerJoinScreen onJoined={handlePlayerJoined} />
+  if (state === 'player-join')  return <PlayerJoinScreen onJoined={handlePlayerJoined} onBack={() => setState('select-role')} />
   if (state === 'player' && joined) return <PlayerDashboard joined={joined} onReset={handleReset} />
   return <View style={{ flex:1, backgroundColor:'#000' }} />
 }
