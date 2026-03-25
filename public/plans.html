@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrackMate — 料金プラン</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --brand: #E53935;
+      --bg: #0a0a0a;
+      --surface: #141414;
+      --border: rgba(255,255,255,0.08);
+      --text: #ffffff;
+      --sub: #aaaaaa;
+      --hint: #555555;
+    }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+
+    /* HERO */
+    .hero { text-align: center; padding: 80px 24px 60px; position: relative; overflow: hidden; }
+    .hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(229,57,53,0.18) 0%, transparent 70%); pointer-events: none; }
+    .logo-mark { display: inline-flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: 20px; background: var(--brand); font-size: 40px; font-weight: 900; color: #fff; box-shadow: 0 0 40px rgba(229,57,53,0.45); margin-bottom: 20px; }
+    .hero h1 { font-size: clamp(32px, 6vw, 56px); font-weight: 900; letter-spacing: -2px; line-height: 1.1; }
+    .hero h1 span { color: var(--brand); }
+    .hero p { color: var(--sub); font-size: 16px; margin-top: 16px; line-height: 1.7; max-width: 500px; margin-inline: auto; }
+    .hero-badge { display: inline-block; background: rgba(229,57,53,0.15); border: 1px solid rgba(229,57,53,0.3); color: var(--brand); font-size: 12px; font-weight: 700; padding: 5px 14px; border-radius: 100px; margin-bottom: 20px; letter-spacing: 1px; }
+
+    /* APP LINK */
+    .app-link { display: flex; align-items: center; justify-content: center; gap: 10px; background: #fff; color: #111; font-size: 16px; font-weight: 800; padding: 16px 32px; border-radius: 14px; text-decoration: none; max-width: 280px; margin: 32px auto 0; transition: opacity 0.2s; }
+    .app-link:hover { opacity: 0.88; }
+
+    /* SECTION */
+    section { max-width: 1000px; margin: 0 auto; padding: 60px 24px; }
+    .section-title { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; margin-bottom: 8px; }
+    .section-sub { color: var(--sub); font-size: 14px; margin-bottom: 36px; }
+
+    /* FREE FEATURES */
+    .free-box { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 28px; }
+    .free-box h3 { font-size: 16px; font-weight: 800; margin-bottom: 16px; }
+    .free-features { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .feat { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--sub); }
+    .feat::before { content: '✓'; color: #4caf50; font-weight: 900; flex-shrink: 0; }
+
+    /* PLANS GRID */
+    .plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .plan-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 28px; display: flex; flex-direction: column; gap: 20px; transition: transform 0.2s; }
+    .plan-card:hover { transform: translateY(-4px); }
+    .plan-card.popular { border-color: var(--brand); position: relative; }
+    .popular-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--brand); color: #fff; font-size: 11px; font-weight: 800; padding: 4px 14px; border-radius: 100px; white-space: nowrap; letter-spacing: 0.5px; }
+    .plan-name { font-size: 18px; font-weight: 900; }
+    .plan-desc { font-size: 13px; color: var(--sub); line-height: 1.6; }
+    .plan-price { font-size: 36px; font-weight: 900; letter-spacing: -1px; }
+    .plan-price span { font-size: 14px; font-weight: 500; color: var(--sub); }
+    .plan-price small { font-size: 13px; font-weight: 500; color: var(--sub); display: block; margin-top: 2px; }
+    .plan-items { list-style: none; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .plan-items li { font-size: 13px; color: var(--sub); display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; }
+    .plan-items li::before { content: '✓'; color: #4caf50; font-weight: 900; flex-shrink: 0; margin-top: 1px; }
+    .plan-items li.no::before { content: '✕'; color: var(--hint); }
+    .plan-items li.no { color: var(--hint); }
+    .plan-cta { display: block; text-align: center; background: var(--brand); color: #fff; font-size: 15px; font-weight: 800; padding: 14px; border-radius: 12px; text-decoration: none; transition: opacity 0.2s; }
+    .plan-cta:hover { opacity: 0.85; }
+    .plan-cta.outline { background: transparent; border: 1px solid var(--border); color: var(--sub); }
+
+    /* TEAM PLAN */
+    .team-section { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 32px; }
+    .team-title { font-size: 20px; font-weight: 900; margin-bottom: 8px; }
+    .team-desc { color: var(--sub); font-size: 14px; line-height: 1.7; margin-bottom: 24px; }
+    .team-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .team-plans { grid-template-columns: 1fr; } }
+    .team-plan { background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .team-plan h4 { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
+    .team-plan .price { font-size: 24px; font-weight: 900; margin-bottom: 4px; }
+    .team-plan .price span { font-size: 13px; font-weight: 400; color: var(--sub); }
+    .team-plan p { font-size: 13px; color: var(--sub); line-height: 1.6; margin-bottom: 12px; }
+    .team-plan ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .team-plan ul li { font-size: 12px; color: var(--sub); display: flex; gap: 6px; }
+    .team-plan ul li::before { content: '✓'; color: #4caf50; font-weight: 900; flex-shrink: 0; }
+
+    /* FLOW */
+    .flow { display: flex; flex-direction: column; gap: 0; }
+    .flow-step { display: flex; gap: 20px; align-items: flex-start; }
+    .flow-line { display: flex; flex-direction: column; align-items: center; }
+    .flow-num { width: 36px; height: 36px; border-radius: 50%; background: var(--brand); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; color: #fff; flex-shrink: 0; }
+    .flow-connector { width: 2px; background: var(--border); flex: 1; min-height: 24px; margin: 4px 0; }
+    .flow-content { padding-bottom: 28px; }
+    .flow-content h4 { font-size: 15px; font-weight: 800; margin-bottom: 4px; }
+    .flow-content p { font-size: 13px; color: var(--sub); line-height: 1.6; }
+
+    /* CONTACT */
+    .contact-box { background: linear-gradient(135deg, rgba(229,57,53,0.12) 0%, rgba(229,57,53,0.04) 100%); border: 1px solid rgba(229,57,53,0.25); border-radius: 20px; padding: 40px 32px; text-align: center; }
+    .contact-box h3 { font-size: 24px; font-weight: 900; margin-bottom: 10px; }
+    .contact-box p { color: var(--sub); font-size: 14px; line-height: 1.7; margin-bottom: 28px; }
+    .contact-links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .contact-btn { display: inline-flex; align-items: center; gap: 8px; padding: 14px 24px; border-radius: 12px; font-size: 15px; font-weight: 700; text-decoration: none; transition: opacity 0.2s; }
+    .contact-btn:hover { opacity: 0.85; }
+    .contact-btn.line { background: #06C755; color: #fff; }
+    .contact-btn.email { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
+
+    /* FOOTER */
+    footer { border-top: 1px solid var(--border); padding: 32px 24px; text-align: center; color: var(--hint); font-size: 12px; }
+
+    /* DIVIDER */
+    hr { border: none; border-top: 1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="logo-mark">T</div>
+  <div class="hero-badge">陸上競技 × テクノロジー</div>
+  <h1>陸上競技を、<br/><span>科学する。</span></h1>
+  <p>疲労管理・フォーム分析・チーム連携まで。<br/>選手もコーチも、TrackMateで強くなる。</p>
+  <a href="https://track-mate-murex.vercel.app" class="app-link">
+    ▶ アプリを無料で試す
+  </a>
+</div>
+
+<!-- FREE FEATURES -->
+<section>
+  <div class="section-title">無料でできること</div>
+  <div class="section-sub">アカウント不要・ゲストで今すぐ使えます</div>
+  <div class="free-box">
+    <h3>🎁 無料機能</h3>
+    <div class="free-features">
+      <div class="feat">練習記録（種目・距離・タイム）</div>
+      <div class="feat">疲労度・体調管理</div>
+      <div class="feat">カレンダー表示</div>
+      <div class="feat">タイマー・ストップウォッチ</div>
+      <div class="feat">ウォームアップガイド</div>
+      <div class="feat">記録グラフ表示</div>
+      <div class="feat">AI分析 1回/日（無料枠）</div>
+      <div class="feat">食事分析 1回（無料枠）</div>
+    </div>
+  </div>
+</section>
+
+<hr/>
+
+<!-- INDIVIDUAL PLANS -->
+<section>
+  <div class="section-title">個人プラン</div>
+  <div class="section-sub">本格的に取り組む選手のために</div>
+  <div class="plans">
+
+    <div class="plan-card popular">
+      <div class="popular-badge">🔥 人気No.1</div>
+      <div>
+        <div class="plan-name">フリープラン</div>
+        <div class="plan-desc">分析もしっかり使いたい個人選手向け</div>
+      </div>
+      <div class="plan-price">¥980<span>/月</span></div>
+      <ul class="plan-items">
+        <li>AI練習分析 無制限</li>
+        <li>食事管理・栄養分析 無制限</li>
+        <li>GPSランニング記録</li>
+        <li>怪我リスク予測</li>
+        <li>AIリカバリー相談</li>
+        <li>全国ランキング参加</li>
+      </ul>
+      <a href="#contact" class="plan-cta">このプランを申し込む</a>
+    </div>
+
+    <div class="plan-card">
+      <div>
+        <div class="plan-name">1日1回分析プラン</div>
+        <div class="plan-desc">少しだけ分析機能を使いたい方に</div>
+      </div>
+      <div class="plan-price">¥480<span>/月</span></div>
+      <ul class="plan-items">
+        <li>AI練習分析 1回/日</li>
+        <li>食事管理 1回/日</li>
+        <li>基本記録機能すべて</li>
+        <li class="no">怪我リスク予測（制限あり）</li>
+        <li class="no">全国ランキング参加不可</li>
+      </ul>
+      <a href="#contact" class="plan-cta outline">申し込む</a>
+    </div>
+
+  </div>
+</section>
+
+<hr/>
+
+<!-- TEAM PLANS -->
+<section>
+  <div class="section-title">チーム・部活動プラン</div>
+  <div class="section-sub">コーチが購入 → 招待コードを配布 → 選手が使えるようになる</div>
+  <div class="team-section">
+    <div class="team-title">👨‍🏫 コーチ・顧問の先生向け</div>
+    <div class="team-desc">
+      チームを作成してコードを発行。選手はコードを入力するだけで参加できます。<br/>
+      選手のコンディション・疲労度・痛みの箇所・動画をまとめて確認。
+    </div>
+    <div class="team-plans">
+      <div class="team-plan">
+        <h4>🏃 チームベーシックプラン</h4>
+        <div class="price">¥480<span> × 人数 / 月</span></div>
+        <p>選手のコンディション管理に特化したプラン</p>
+        <ul>
+          <li>コーチダッシュボード</li>
+          <li>疲労度・怪我リスク確認</li>
+          <li>痛み箇所マップ</li>
+          <li>アナウンス通知</li>
+          <li>動画送信・閲覧（1週間保存）</li>
+        </ul>
+      </div>
+      <div class="team-plan" style="border-color: rgba(229,57,53,0.3);">
+        <h4>🔬 チーム分析プラン</h4>
+        <div class="price">¥680<span> × 人数 / 月</span></div>
+        <p>選手1人1人のAI分析もコーチが確認できる</p>
+        <ul>
+          <li>ベーシックプランの全機能</li>
+          <li>選手のAI練習分析（無制限）</li>
+          <li>食事・栄養管理（無制限）</li>
+          <li>フォーム動画分析</li>
+          <li>怪我予防レポート</li>
+        </ul>
+      </div>
+    </div>
+    <div style="margin-top: 20px; padding: 16px; background: rgba(255,255,255,0.03); border-radius: 12px;">
+      <p style="font-size: 13px; color: var(--sub); line-height: 1.7;">
+        💡 <strong style="color: var(--text);">例：20人チームの場合</strong><br/>
+        ベーシック: 480円 × 20人 = <strong style="color: var(--text);">9,600円/月</strong>　|
+        分析付き: 680円 × 20人 = <strong style="color: var(--text);">13,600円/月</strong>
+      </p>
+    </div>
+  </div>
+</section>
+
+<hr/>
+
+<!-- HOW IT WORKS -->
+<section>
+  <div class="section-title">申し込みの流れ</div>
+  <div class="section-sub">シンプル3ステップで使い始められます</div>
+  <div class="flow">
+    <div class="flow-step">
+      <div class="flow-line">
+        <div class="flow-num">1</div>
+        <div class="flow-connector"></div>
+      </div>
+      <div class="flow-content">
+        <h4>お問い合わせ・プラン選択</h4>
+        <p>LINEまたはメールにてご希望のプランと人数をお知らせください。</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-line">
+        <div class="flow-num">2</div>
+        <div class="flow-connector"></div>
+      </div>
+      <div class="flow-content">
+        <h4>お支払い・コード発行</h4>
+        <p>お支払い確認後、人数分の招待コードをお送りします。</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-line">
+        <div class="flow-num">3</div>
+      </div>
+      <div class="flow-content">
+        <h4>アプリで入力してすぐ使える</h4>
+        <p>TrackMateを開いてコードを入力するだけ。すぐに全機能が使えます。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr/>
+
+<!-- CONTACT -->
+<section id="contact">
+  <div class="contact-box">
+    <h3>お問い合わせ・申し込み</h3>
+    <p>プランについてのご質問、無料相談もお気軽にどうぞ。<br/>学校・部活・クラブチームへの導入支援も行っています。</p>
+    <div class="contact-links">
+      <a href="mailto:fojpl.office@gmail.com" class="contact-btn email">
+        ✉️ メールで問い合わせる
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>© 2026 TrackMate. All rights reserved.</p>
+  <p style="margin-top: 8px;">
+    <a href="https://track-mate-murex.vercel.app" style="color: inherit;">アプリを開く</a>
+  </p>
+</footer>
+
+</body>
+</html>
