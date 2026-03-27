@@ -11,6 +11,7 @@ import {
   Animated,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -315,16 +316,8 @@ export default function NotebookScreen() {
   const [saving, setSaving] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
 
-  const [recordDate, setRecordDate] = useState(new Date().toISOString().slice(0, 10))
-  const [sessionType, setSessionType] = useState<SessionType>('interval')
-  const [event, setEvent] = useState<TrackEvent | ''>('')
-  const [timeMin, setTimeMin] = useState('')
-  const [timeSec, setTimeSec] = useState('')
-  const [distanceM, setDistanceM] = useState('')
-  const [reps, setReps] = useState('')
-  const [fatigue, setFatigue] = useState(5)
-  const [condition, setCondition] = useState(7)
-  const [notes, setNotes] = useState('')
+  const [freeText, setFreeText] = useState('')
+  const [aiParsing, setAiParsing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -340,49 +333,85 @@ export default function NotebookScreen() {
 
   useEffect(() => { load() }, [load])
 
-  function resetForm() {
-    setRecordDate(new Date().toISOString().slice(0, 10))
-    setSessionType('interval')
-    setEvent('')
-    setTimeMin('')
-    setTimeSec('')
-    setDistanceM('')
-    setReps('')
-    setFatigue(5)
-    setCondition(7)
-    setNotes('')
+  async function handleAiSave() {
+    if (!freeText.trim()) return
+    setAiParsing(true)
+    try {
+      const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
+      const today = new Date().toISOString().slice(0, 10)
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey || '',
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5',
+          max_tokens: 400,
+          messages: [{
+            role: 'user',
+            content: `陸上競技の練習記録テキストをJSONに変換。今日は${today}。
+
+テキスト: "${freeText}"
+
+JSONのみ返答（説明不要）:
+{"session_date":"YYYY-MM-DD","session_type":"interval|tempo|easy|long|sprint|drill|strength|race|rest","event":"100m|200m|400m|110mH|100mH|400mH|800m|1500m|3000m|5000m|10000m|3000mSC|null","time_ms":数値orNull,"distance_m":数値orNull,"reps":数値orNull,"fatigue_level":1-10,"condition_level":1-10,"notes":"元テキスト"}`,
+          }],
+        }),
+      })
+
+      const data = await response.json()
+      const jsonText = data.content?.[0]?.text ?? '{}'
+      const parsed = JSON.parse(jsonText.replace(/```json|```/g, '').trim())
+
+      const localSession: TrainingSession = {
+        id: `local-${Date.now()}`,
+        user_id: MOCK_USER_ID,
+        created_at: new Date().toISOString(),
+        session_date: parsed.session_date || today,
+        session_type: parsed.session_type || 'easy',
+        event: parsed.event && parsed.event !== 'null' ? parsed.event : undefined,
+        time_ms: parsed.time_ms || undefined,
+        distance_m: parsed.distance_m || undefined,
+        reps: parsed.reps || undefined,
+        fatigue_level: parsed.fatigue_level || 5,
+        condition_level: parsed.condition_level || 7,
+        notes: freeText,
+      }
+
+      setSessions(prev => {
+        const next = [localSession, ...prev]
+        AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(next)).catch(() => {})
+        return next
+      })
+      Sounds.save()
+      setFreeText('')
+      setModalVisible(false)
+      Toast.show({ type: 'success', text1: '練習を記録しました ✓', visibilityTime: 1500 })
+    } catch {
+      Toast.show({ type: 'error', text1: 'AI解析に失敗しました', text2: 'もう一度試してください' })
+    } finally {
+      setAiParsing(false)
+    }
   }
 
   async function handleSave() {
     setSaving(true)
     try {
-      const minN = parseInt(timeMin || '0', 10)
-      const secN = parseFloat(timeSec || '0')
-      const time_ms = (minN * 60 + secN) * 1000 || undefined
-
-      const payload = {
-        user_id: MOCK_USER_ID,
-        session_date: recordDate,
-        session_type: sessionType,
-        event: event || undefined,
-        time_ms,
-        distance_m: distanceM ? parseInt(distanceM, 10) : undefined,
-        reps: reps ? parseInt(reps, 10) : undefined,
-        fatigue_level: fatigue,
-        condition_level: condition,
-        notes: notes || undefined,
-      }
-
       const localSession: TrainingSession = {
-        ...payload,
         id: `local-${Date.now()}`,
+        user_id: MOCK_USER_ID,
         created_at: new Date().toISOString(),
-        fatigue_level: fatigue,
-        condition_level: condition,
+        session_date: new Date().toISOString().slice(0, 10),
+        session_type: 'easy',
+        fatigue_level: 5,
+        condition_level: 7,
       }
-      const updated = (prevSessions: TrainingSession[]) => [localSession, ...prevSessions]
       setSessions(prev => {
-        const next = updated(prev)
+        const next = [localSession, ...prev]
         AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(next)).catch(() => {})
         return next
       })
@@ -484,141 +513,45 @@ export default function NotebookScreen() {
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView style={styles.modalSafe}>
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <TouchableOpacity onPress={() => { setModalVisible(false); setFreeText('') }}>
                   <Text style={styles.cancelText}>キャンセル</Text>
                 </TouchableOpacity>
                 <Text style={styles.modalTitle}>練習を記録</Text>
-                <TouchableOpacity onPress={handleSave} disabled={saving}>
-                  <Text style={[styles.saveText, saving && { opacity: 0.4 }]}>
-                    {saving ? '保存中...' : '保存'}
-                  </Text>
-                </TouchableOpacity>
+                <View style={{ width: 60 }} />
               </View>
 
-              <Text style={styles.label}>日付</Text>
-              <DateSelector date={recordDate} onChange={setRecordDate} />
+              <Text style={{ color: '#888', fontSize: 13, marginBottom: 16, lineHeight: 20 }}>
+                今日の練習を自由に書いてください{'\n'}AIが自動で整理して記録します
+              </Text>
 
-              <Text style={styles.label}>練習タイプ</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                <View style={styles.chipRow}>
-                  {SESSION_TYPES.map(t => (
-                    <TouchableOpacity
-                      key={t.key}
-                      style={[styles.chip, sessionType === t.key && { backgroundColor: t.color, borderColor: t.color }]}
-                      onPress={() => setSessionType(t.key)}
-                    >
-                      <Text style={[styles.chipText, sessionType === t.key && { color: '#FFFFFF' }]}>{t.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-
-              <Text style={styles.label}>種目（任意）</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-                <View style={styles.chipRow}>
-                  {EVENTS.map(e => (
-                    <TouchableOpacity
-                      key={e}
-                      style={[styles.chip, event === e && { backgroundColor: BRAND, borderColor: BRAND }]}
-                      onPress={() => setEvent(prev => prev === e ? '' : e)}
-                    >
-                      <Text style={[styles.chipText, event === e && { color: '#FFFFFF' }]}>{e}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-
-              <Text style={styles.label}>タイム（任意）</Text>
-              <View style={styles.timeRow}>
-                <View style={styles.timeCol}>
-                  <Text style={styles.timeUnit}>分</Text>
-                  <TextInput
-                    style={styles.timeNumInput}
-                    value={timeMin}
-                    onChangeText={setTimeMin}
-                    keyboardType="number-pad"
-                    placeholder="0"
-                    placeholderTextColor="#445577"
-                    maxLength={2}
-                    textAlign="center"
-                  />
-                </View>
-                <Text style={styles.timeSep}>:</Text>
-                <View style={styles.timeCol}>
-                  <Text style={styles.timeUnit}>秒</Text>
-                  <TextInput
-                    style={styles.timeNumInput}
-                    value={timeSec}
-                    onChangeText={setTimeSec}
-                    keyboardType="decimal-pad"
-                    placeholder="00.00"
-                    placeholderTextColor="#445577"
-                    maxLength={5}
-                    textAlign="center"
-                  />
-                </View>
-              </View>
-
-              <View style={styles.row2}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>距離（m）</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={distanceM}
-                    onChangeText={setDistanceM}
-                    keyboardType="number-pad"
-                    placeholder="例: 400"
-                    placeholderTextColor="#445577"
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>本数</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={reps}
-                    onChangeText={setReps}
-                    keyboardType="number-pad"
-                    placeholder="例: 5"
-                    placeholderTextColor="#445577"
-                  />
-                </View>
-              </View>
-
-              <Text style={styles.label}>疲労度: <Text style={{ color: BRAND }}>{fatigue}</Text>/10</Text>
-              <View style={styles.sliderRow}>
-                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-                  <TouchableOpacity
-                    key={n}
-                    style={[styles.sliderDot, n <= fatigue && { backgroundColor: BRAND }]}
-                    onPress={() => setFatigue(n)}
-                  />
-                ))}
-              </View>
-
-              <Text style={[styles.label, { marginTop: 16 }]}>体調: <Text style={{ color: '#34C759' }}>{condition}</Text>/10</Text>
-              <View style={styles.sliderRow}>
-                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
-                  <TouchableOpacity
-                    key={n}
-                    style={[styles.sliderDot, n <= condition && { backgroundColor: '#34C759' }]}
-                    onPress={() => setCondition(n)}
-                  />
-                ))}
-              </View>
-
-              <Text style={[styles.label, { marginTop: 16 }]}>メモ（任意）</Text>
               <TextInput
-                style={[styles.input, styles.textArea]}
-                value={notes}
-                onChangeText={setNotes}
+                style={[styles.input, { height: 200, textAlignVertical: 'top', fontSize: 16, lineHeight: 26 }]}
+                value={freeText}
+                onChangeText={setFreeText}
                 multiline
-                numberOfLines={4}
-                placeholder="今日の練習について..."
+                placeholder={'例:\n400m × 5本 レスト3分\n68秒 疲労7\nスタートが良かった\n\n「ジョグ10km ゆっくり」でもOK'}
                 placeholderTextColor="#445577"
+                autoFocus
               />
-            </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.aiBtn, (!freeText.trim() || aiParsing) && { opacity: 0.4 }]}
+                onPress={handleAiSave}
+                disabled={!freeText.trim() || aiParsing}
+                activeOpacity={0.8}
+              >
+                {aiParsing ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="sparkles" size={18} color="#fff" />
+                    <Text style={styles.aiBtnText}>AIで記録する</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
@@ -663,8 +596,10 @@ const styles = StyleSheet.create({
   emptyText: { color: TEXT.hint, fontSize: 14 },
   emptySubText: { color: TEXT.secondary, fontSize: 13, textAlign: 'center', lineHeight: 20 },
   modalSafe: { flex: 1, backgroundColor: '#000000' },
-  modalContent: { padding: 20, paddingBottom: 40, gap: 4 },
+  modalContent: { flex: 1, padding: 20, paddingBottom: 40, gap: 4 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  aiBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 16, marginTop: 20 },
+  aiBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   modalTitle: { color: TEXT.primary, fontSize: 17, fontWeight: '700' },
   cancelText: { color: TEXT.secondary, fontSize: 16 },
   saveText: { color: BRAND, fontSize: 16, fontWeight: '700' },
