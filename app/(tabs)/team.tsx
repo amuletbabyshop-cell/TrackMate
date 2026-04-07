@@ -18,6 +18,7 @@ import {
   fetchMembers, registerMember,
   type TeamMessageRow, type TeamVideoRow, type BodyReportRow, type TeamMemberRow,
 } from '../../lib/supabaseTeam'
+import { useTheme } from '../../context/ThemeContext'
 import {
   initOneSignal, requestPushPermission, registerUserTags, sendPush,
 } from '../../lib/notify'
@@ -229,48 +230,49 @@ const vs = StyleSheet.create({
 // RoleSelectionScreen
 // ─────────────────────────────────────────────────────────
 function RoleSelectionScreen({ onSelect }: { onSelect: (role: Role) => void }) {
+  const { colors } = useTheme()
   return (
-    <View style={{flex:1,backgroundColor:'#000'}}>
+    <View style={{flex:1,backgroundColor:colors.bg}}>
       <SafeAreaView style={{flex:1}}>
         <ScrollView contentContainerStyle={{padding:24,paddingTop:48,gap:16}} showsVerticalScrollIndicator={false}>
           <View style={{alignItems:'center',marginBottom:8}}>
             <Ionicons name="people" size={52} color={BRAND}/>
           </View>
-          <Text style={{color:'#fff',fontSize:26,fontWeight:'800',textAlign:'center'}}>チーム機能</Text>
-          <Text style={{color:TEXT.secondary,fontSize:14,lineHeight:22,textAlign:'center',marginBottom:4}}>
+          <Text style={{color:colors.text,fontSize:26,fontWeight:'800',textAlign:'center'}}>チーム機能</Text>
+          <Text style={{color:colors.textSec,fontSize:14,lineHeight:22,textAlign:'center',marginBottom:4}}>
             あなたの役割を選択してください
           </Text>
-          <TouchableOpacity style={role_s.card} onPress={() => onSelect('coach')} activeOpacity={0.85}>
+          <TouchableOpacity style={[role_s.card,{backgroundColor:colors.surface,borderColor:colors.border}]} onPress={() => onSelect('coach')} activeOpacity={0.85}>
             <View style={[role_s.icon,{backgroundColor:BRAND+'18'}]}>
               <Ionicons name="clipboard" size={28} color={BRAND}/>
             </View>
             <View style={{flex:1,gap:3}}>
-              <Text style={role_s.title}>コーチ・監督・先生</Text>
-              <Text style={role_s.desc}>チームを作成して選手を招待。状態の確認・アナウンスができます</Text>
+              <Text style={[role_s.title,{color:colors.text}]}>コーチ・監督・先生</Text>
+              <Text style={[role_s.desc,{color:colors.textSec}]}>チームを作成して選手を招待。状態の確認・アナウンスができます</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#444"/>
+            <Ionicons name="chevron-forward" size={18} color={colors.textHint}/>
           </TouchableOpacity>
-          <TouchableOpacity style={role_s.card} onPress={() => onSelect('player')} activeOpacity={0.85}>
-            <View style={[role_s.icon,{backgroundColor:'#34C759'+'18'}]}>
+          <TouchableOpacity style={[role_s.card,{backgroundColor:colors.surface,borderColor:colors.border}]} onPress={() => onSelect('player')} activeOpacity={0.85}>
+            <View style={[role_s.icon,{backgroundColor:'#34C75918'}]}>
               <Ionicons name="person-circle" size={28} color="#34C759"/>
             </View>
             <View style={{flex:1,gap:3}}>
-              <Text style={role_s.title}>選手・アスリート</Text>
-              <Text style={role_s.desc}>コードでチームに参加。状態を報告・動画をコーチに送れます</Text>
+              <Text style={[role_s.title,{color:colors.text}]}>選手・アスリート</Text>
+              <Text style={[role_s.desc,{color:colors.textSec}]}>コードでチームに参加。状態を報告・動画をコーチに送れます</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#444"/>
+            <Ionicons name="chevron-forward" size={18} color={colors.textHint}/>
           </TouchableOpacity>
-          <Text style={{color:'#444',fontSize:11,textAlign:'center'}}>※ あとから変更できます</Text>
+          <Text style={{color:colors.textHint,fontSize:11,textAlign:'center'}}>※ あとから変更できます</Text>
         </ScrollView>
       </SafeAreaView>
     </View>
   )
 }
 const role_s = StyleSheet.create({
-  card:  { flexDirection:'row', alignItems:'center', gap:14, backgroundColor:'rgba(255,255,255,0.06)', borderRadius:16, borderWidth:1, borderColor:'rgba(255,255,255,0.1)', padding:18 },
+  card:  { flexDirection:'row', alignItems:'center', gap:14, borderRadius:16, borderWidth:1, padding:18 },
   icon:  { width:52, height:52, borderRadius:14, alignItems:'center', justifyContent:'center' },
-  title: { color:'#fff', fontSize:16, fontWeight:'800' },
-  desc:  { color:TEXT.secondary, fontSize:12, lineHeight:17 },
+  title: { fontSize:16, fontWeight:'800' },
+  desc:  { fontSize:12, lineHeight:17 },
 })
 
 // ─────────────────────────────────────────────────────────

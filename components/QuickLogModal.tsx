@@ -42,36 +42,48 @@ export default function QuickLogModal({ visible, onClose, onSaved }: Props) {
     if (!freeText.trim()) return
     unlockAudio()
     setParsing(true)
+
+    const today = new Date().toISOString().slice(0, 10)
+
+    // ── Step 1: AI解析（失敗しても続行） ──────────────────
+    let parsed: Record<string, any> = {}
     try {
       const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
-      const today  = new Date().toISOString().slice(0, 10)
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey || '',
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5',
-          max_tokens: 400,
-          messages: [{
-            role: 'user',
-            content: `陸上競技の練習記録テキストをJSONに変換。今日は${today}。
+      if (apiKey) {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 400,
+            messages: [{
+              role: 'user',
+              content: `陸上競技の練習記録テキストをJSONに変換。今日は${today}。
 
 テキスト: "${freeText}"
 
 JSONのみ返答（説明不要）:
 {"session_date":"YYYY-MM-DD","session_type":"interval|tempo|easy|long|sprint|drill|strength|race|rest","event":"100m|200m|400m|110mH|100mH|400mH|800m|1500m|3000m|5000m|10000m|3000mSC|null","time_ms":数値orNull,"distance_m":数値orNull,"reps":数値orNull,"fatigue_level":1-10,"condition_level":1-10}`,
-          }],
-        }),
-      })
+            }],
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const text = data.content?.[0]?.text ?? ''
+          parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+        }
+      }
+    } catch {
+      // AI解析失敗 → フォールバックで保存継続
+    }
 
-      const data   = await res.json()
-      const parsed = JSON.parse((data.content?.[0]?.text ?? '{}').replace(/```json|```/g, '').trim())
-
+    // ── Step 2: 必ず保存 ──────────────────────────────────
+    try {
       const existing = await AsyncStorage.getItem(SESSIONS_KEY)
       const sessions = existing ? JSON.parse(existing) : []
 
@@ -97,7 +109,7 @@ JSONのみ返答（説明不要）:
       onSaved?.()
       onClose()
     } catch {
-      Toast.show({ type: 'error', text1: 'AI解析に失敗しました', text2: 'もう一度試してください' })
+      Toast.show({ type: 'error', text1: '保存に失敗しました', text2: 'もう一度試してください' })
     } finally {
       setParsing(false)
     }

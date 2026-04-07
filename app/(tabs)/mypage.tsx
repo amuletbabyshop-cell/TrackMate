@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { BRAND, TEXT, SURFACE, SURFACE2, DIVIDER, NEON } from '../../lib/theme'
+import { useTheme } from '../../context/ThemeContext'
 import { Sounds, unlockAudio } from '../../lib/sounds'
 import {
   requestPermission, getPermission, scheduleTrainingReminder,
@@ -67,12 +68,13 @@ export default function MyPageScreen() {
     }
   }
 
+  const { colors } = useTheme()
   const displayName = profile.name || 'アスリート'
   const initials = displayName.slice(0, 2)
   const eventLabel = profile.primary_event || '—'
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
 
@@ -83,16 +85,16 @@ export default function MyPageScreen() {
                 <Text style={st.avatarText}>{initials}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={st.profileName}>{displayName}</Text>
-                <View style={st.eventBadge}>
-                  <Text style={st.eventText}>{eventLabel}</Text>
+                <Text style={[st.profileName, { color: colors.text }]}>{displayName}</Text>
+                <View style={[st.eventBadge, { backgroundColor: colors.surface2 }]}>
+                  <Text style={[st.eventText, { color: colors.textSec }]}>{eventLabel}</Text>
                 </View>
-                {profile.grade ? <Text style={st.gradeTxt}>{profile.grade}</Text> : null}
+                {profile.grade ? <Text style={[st.gradeTxt, { color: colors.textHint }]}>{profile.grade}</Text> : null}
               </View>
               <PressableScale haptic="light" onPress={() => { unlockAudio(); Sounds.tap(); router.push('/settings') }}>
-                <View style={st.editBtn}>
-                  <Ionicons name="pencil" size={14} color={TEXT.secondary} />
-                  <Text style={st.editTxt}>編集</Text>
+                <View style={[st.editBtn, { backgroundColor: colors.surface2 }]}>
+                  <Ionicons name="pencil" size={14} color={colors.textSec} />
+                  <Text style={[st.editTxt, { color: colors.textSec }]}>編集</Text>
                 </View>
               </PressableScale>
             </View>
@@ -100,7 +102,7 @@ export default function MyPageScreen() {
 
           {/* ── 機能グリッド ── */}
           <View>
-            <Text style={st.sectionLabel}>FEATURES</Text>
+            <Text style={[st.sectionLabel, { color: colors.textHint }]}>FEATURES</Text>
             <View style={{ gap: 8 }}>
               {Array.from({ length: Math.ceil(LINKS.length / 2) }, (_, ri) => (
                 <View key={ri} style={st.grid}>
@@ -112,10 +114,10 @@ export default function MyPageScreen() {
                       style={{ flex: 1 }}
                       onPress={() => { unlockAudio(); Sounds.tap(); router.push(link.route as any) }}
                     >
-                      <View style={[st.gridCard, { borderColor: link.color + '33' }]}>
+                      <View style={[st.gridCard, { backgroundColor: colors.surface, borderColor: link.color + '33' }]}>
                         <Text style={st.gridIcon}>{link.icon}</Text>
-                        <Text style={st.gridLabel}>{link.label}</Text>
-                        <Text style={st.gridSub}>{link.sub}</Text>
+                        <Text style={[st.gridLabel, { color: colors.text }]}>{link.label}</Text>
+                        <Text style={[st.gridSub, { color: colors.textHint }]}>{link.sub}</Text>
                       </View>
                     </PressableScale>
                   ))}
@@ -126,11 +128,11 @@ export default function MyPageScreen() {
 
           {/* ── 通知設定 ── */}
           <GlassCard>
-            <Text style={st.sectionLabel}>NOTIFICATIONS</Text>
+            <Text style={[st.sectionLabel, { color: colors.textHint }]}>NOTIFICATIONS</Text>
             <View style={st.notifRow}>
               <View style={{ flex: 1 }}>
-                <Text style={st.notifTitle}>怪我予防リマインダー</Text>
-                <Text style={st.notifSub}>
+                <Text style={[st.notifTitle, { color: colors.text }]}>怪我予防リマインダー</Text>
+                <Text style={[st.notifSub, { color: colors.textSec }]}>
                   {notifPerm === 'denied'
                     ? 'ブラウザの設定で通知を許可してください'
                     : '朝7時のリスク確認・夜22時の睡眠記録'}
@@ -148,8 +150,8 @@ export default function MyPageScreen() {
 
           {/* ── アプリ情報 ── */}
           <View style={st.appInfo}>
-            <Text style={st.appInfoText}>TrackMate  v1.0.0</Text>
-            <Text style={st.appInfoText}>陸上選手の怪我予防・パフォーマンス向上</Text>
+            <Text style={[st.appInfoText, { color: colors.textHint }]}>TrackMate  v1.0.0</Text>
+            <Text style={[st.appInfoText, { color: colors.textHint }]}>陸上選手の怪我予防・パフォーマンス向上</Text>
           </View>
 
         </ScrollView>

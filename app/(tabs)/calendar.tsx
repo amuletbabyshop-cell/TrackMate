@@ -6,6 +6,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { TEXT, SURFACE, SURFACE2, DIVIDER, NEON, BRAND } from '../../lib/theme'
+import { useTheme } from '../../context/ThemeContext'
 import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Sounds, unlockAudio } from '../../lib/sounds'
@@ -358,23 +359,23 @@ export default function CalendarScreen() {
   const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`
   const monthEntries = Object.entries(dayMap).filter(([d]) => d.startsWith(monthPrefix))
 
+  const { colors } = useTheme()
   const selectedRecords = recordMap[selectedDate] ?? []
   const selectedIsEvent = (r: DayRecord) => r.type === 'event'
 
   return (
-    <View style={{ flex: 1 }}>
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }]} />
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scroll}>
 
           {/* ── 月ナビ ── */}
           <View style={st.monthNav}>
-            <TouchableOpacity onPress={() => changeMonth(-1)} style={st.navBtn} activeOpacity={0.7}>
-              <Ionicons name="chevron-back" size={22} color="#fff" />
+            <TouchableOpacity onPress={() => changeMonth(-1)} style={[st.navBtn, { backgroundColor: colors.surface2, borderColor: colors.border }]} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
             </TouchableOpacity>
-            <Text style={st.monthTitle}>{year}年{month + 1}月</Text>
-            <TouchableOpacity onPress={() => changeMonth(1)} style={st.navBtn} activeOpacity={0.7}>
-              <Ionicons name="chevron-forward" size={22} color="#fff" />
+            <Text style={[st.monthTitle, { color: colors.text }]}>{year}年{month + 1}月</Text>
+            <TouchableOpacity onPress={() => changeMonth(1)} style={[st.navBtn, { backgroundColor: colors.surface2, borderColor: colors.border }]} activeOpacity={0.7}>
+              <Ionicons name="chevron-forward" size={22} color={colors.text} />
             </TouchableOpacity>
           </View>
 
@@ -383,16 +384,16 @@ export default function CalendarScreen() {
             {(Object.entries(DOT_COLORS) as [DotType, string][]).map(([type, color]) => (
               <View key={type} style={st.legendItem}>
                 <View style={[st.legendDot, { backgroundColor: color }]} />
-                <Text style={st.legendTxt}>{DOT_LABELS[type]}</Text>
+                <Text style={[st.legendTxt, { color: colors.textHint }]}>{DOT_LABELS[type]}</Text>
               </View>
             ))}
           </View>
 
           {/* ── カレンダーグリッド ── */}
-          <Animated.View style={[st.calCard, { opacity: fadeAnim }]}>
+          <Animated.View style={[st.calCard, { opacity: fadeAnim, backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={st.weekRow}>
               {WEEKDAYS.map((w, i) => (
-                <Text key={w} style={[st.weekLbl,
+                <Text key={w} style={[st.weekLbl, { color: colors.textHint },
                   i === 0 && { color: '#E53935' },
                   i === 6 && { color: '#2196F3' },
                 ]}>{w}</Text>
@@ -419,10 +420,10 @@ export default function CalendarScreen() {
           </Animated.View>
 
           {/* ── 選択日の詳細 ── */}
-          <View style={st.detailCard}>
+          <View style={[st.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={st.detailHeader}>
-              <Ionicons name="calendar-outline" size={16} color="#888" />
-              <Text style={st.detailTitle}>{selectedDate.replace(/-/g, '/')} の予定・記録</Text>
+              <Ionicons name="calendar-outline" size={16} color={colors.textHint} />
+              <Text style={[st.detailTitle, { color: colors.text }]}>{selectedDate.replace(/-/g, '/')} の予定・記録</Text>
               <TouchableOpacity
                 style={st.addBtn}
                 activeOpacity={0.8}
@@ -436,8 +437,8 @@ export default function CalendarScreen() {
             {selectedRecords.length === 0 ? (
               <View style={st.emptyBox}>
                 <Text style={st.emptyEmoji}>📅</Text>
-                <Text style={st.emptyTxt}>この日の記録はありません</Text>
-                <Text style={st.emptySub}>「予定を追加」で自由に入力できます</Text>
+                <Text style={[st.emptyTxt, { color: colors.textSec }]}>この日の記録はありません</Text>
+                <Text style={[st.emptySub, { color: colors.textHint }]}>「予定を追加」で自由に入力できます</Text>
               </View>
             ) : (
               <View style={{ gap: 8 }}>
@@ -452,8 +453,8 @@ export default function CalendarScreen() {
                         <Ionicons name={DOT_ICONS[rec.type] as any} size={16} color={dotColor} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={st.recordLbl}>{rec.label}</Text>
-                        {rec.sub ? <Text style={st.recordSub}>{rec.sub}</Text> : null}
+                        <Text style={[st.recordLbl, { color: colors.text }]}>{rec.label}</Text>
+                        {rec.sub ? <Text style={[st.recordSub, { color: colors.textHint }]}>{rec.sub}</Text> : null}
                       </View>
                       {isEv && rec.eventId ? (
                         <View style={st.eventActions}>
