@@ -419,36 +419,6 @@ export default function DashboardScreen() {
             <NextCompCard competitions={competitions} />
           </AnimatedEntry>
 
-          {/* ── 今週サマリー（コンパクト） ── */}
-          <AnimatedEntry delay={380}>
-            <GlassCard>
-              <View style={s.row}>
-                <Text style={s.sectionLabel}>TODAY'S WEEK</Text>
-                <PressableScale haptic="light" onPress={() => router.push('/(tabs)/notebook')}>
-                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>ノート →</Text>
-                </PressableScale>
-              </View>
-              {isLoading ? (
-                <View style={s.weekStatsRow}>
-                  {[0,1].map(i => <View key={i} style={s.weekStat}><SkeletonRect height={28} width="60%" /><SkeletonRect height={10} width="80%" /></View>)}
-                </View>
-              ) : (
-                <View style={s.weekStatsRow}>
-                  <View style={s.weekStat}>
-                    <Text style={s.weekStatNum}>{weeklyStats.count}</Text>
-                    <Text style={s.weekStatLabel}>練習回数</Text>
-                  </View>
-                  <View style={[s.weekStat, { borderLeftWidth: 1, borderLeftColor: DIVIDER }]}>
-                    <Text style={s.weekStatNum}>
-                      {weeklyStats.totalDistanceM > 0 ? formatKm(weeklyStats.totalDistanceM) : '—'}
-                    </Text>
-                    <Text style={s.weekStatLabel}>合計距離</Text>
-                  </View>
-                </View>
-              )}
-            </GlassCard>
-          </AnimatedEntry>
-
           {/* ── 直近の練習 ── */}
           <AnimatedEntry delay={440}>
             <GlassCard>
