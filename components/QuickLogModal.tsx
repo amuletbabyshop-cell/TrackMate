@@ -1,38 +1,17 @@
-// components/QuickLogModal.tsx — クイック練習ログ（複数メニュー対応）
+// components/QuickLogModal.tsx — AI自由入力版
 import React, { useState, useRef } from 'react'
 import {
   Modal, View, Text, TouchableOpacity, TextInput,
-  StyleSheet, Animated, KeyboardAvoidingView, Platform, ScrollView,
+  StyleSheet, Animated, KeyboardAvoidingView, Platform,
+  ActivityIndicator,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Ionicons } from '@expo/vector-icons'
-import { BRAND, TEXT, SURFACE2, DIVIDER, NEON } from '../lib/theme'
+import { BRAND, TEXT } from '../lib/theme'
 import { Sounds, unlockAudio } from '../lib/sounds'
 import Toast from 'react-native-toast-message'
 
 const SESSIONS_KEY = 'trackmate_sessions'
-
-const FATIGUE_EMOJIS = [
-  { emoji: '😊', label: '楽',     value: 2 },
-  { emoji: '🙂', label: 'やや楽', value: 4 },
-  { emoji: '😐', label: 'ふつう', value: 6 },
-  { emoji: '😰', label: 'きつい', value: 8 },
-  { emoji: '🥵', label: '限界',   value: 10 },
-]
-
-type Unit = 'km' | 'm'
-
-interface MenuItem {
-  id: string
-  name: string       // 種目名
-  distance: string   // 距離数値
-  unit: Unit         // km or m
-  sets: string       // 本数
-}
-
-function newItem(): MenuItem {
-  return { id: String(Date.now() + Math.random()), name: '', distance: '', unit: 'm', sets: '' }
-}
 
 interface Props {
   visible: boolean
@@ -41,10 +20,8 @@ interface Props {
 }
 
 export default function QuickLogModal({ visible, onClose, onSaved }: Props) {
-  const [items, setItems]         = useState<MenuItem[]>([newItem()])
-  const [fatigueVal, setFatigueVal] = useState(6)
-  const [notes, setNotes]         = useState('')
-  const [saving, setSaving]       = useState(false)
+  const [freeText, setFreeText] = useState('')
+  const [parsing, setParsing]   = useState(false)
 
   const slideAnim = useRef(new Animated.Value(300)).current
 
@@ -56,73 +33,79 @@ export default function QuickLogModal({ visible, onClose, onSaved }: Props) {
     }
   }, [visible])
 
-  const updateItem = (id: string, key: keyof MenuItem, val: string) => {
-    setItems(prev => prev.map(it => it.id === id ? { ...it, [key]: val } : it))
-  }
-
-  const addItem = () => {
-    unlockAudio(); Sounds.pop()
-    setItems(prev => [...prev, newItem()])
-  }
-
-  const removeItem = (id: string) => {
-    unlockAudio(); Sounds.tap()
-    setItems(prev => prev.filter(it => it.id !== id))
-  }
-
-  const toggleUnit = (id: string, current: Unit) => {
-    unlockAudio(); Sounds.tap()
-    updateItem(id, 'unit', current === 'km' ? 'm' : 'km')
+  function handleClose() {
+    setFreeText('')
+    onClose()
   }
 
   async function handleSave() {
+    if (!freeText.trim()) return
     unlockAudio()
-    setSaving(true)
+    setParsing(true)
     try {
-      const validItems = items.filter(it => it.name.trim())
-      if (validItems.length === 0) {
-        Toast.show({ type: 'error', text1: '種目名を入力してください' })
-        return
-      }
+      const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
+      const today  = new Date().toISOString().slice(0, 10)
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey || '',
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5',
+          max_tokens: 400,
+          messages: [{
+            role: 'user',
+            content: `陸上競技の練習記録テキストをJSONに変換。今日は${today}。
+
+テキスト: "${freeText}"
+
+JSONのみ返答（説明不要）:
+{"session_date":"YYYY-MM-DD","session_type":"interval|tempo|easy|long|sprint|drill|strength|race|rest","event":"100m|200m|400m|110mH|100mH|400mH|800m|1500m|3000m|5000m|10000m|3000mSC|null","time_ms":数値orNull,"distance_m":数値orNull,"reps":数値orNull,"fatigue_level":1-10,"condition_level":1-10}`,
+          }],
+        }),
+      })
+
+      const data   = await res.json()
+      const parsed = JSON.parse((data.content?.[0]?.text ?? '{}').replace(/```json|```/g, '').trim())
+
       const existing = await AsyncStorage.getItem(SESSIONS_KEY)
       const sessions = existing ? JSON.parse(existing) : []
 
-      // メニュー内容をnotesに整形
-      const menuText = validItems.map(it => {
-        let line = it.name.trim()
-        if (it.distance) line += ` ${it.distance}${it.unit}`
-        if (it.sets) line += ` × ${it.sets}本`
-        return line
-      }).join('\n')
+      sessions.unshift({
+        id:              `ql_${Date.now()}`,
+        user_id:         'mock-user-1',
+        session_date:    parsed.session_date    || today,
+        session_type:    parsed.session_type    || 'easy',
+        event:           parsed.event && parsed.event !== 'null' ? parsed.event : undefined,
+        time_ms:         parsed.time_ms         || undefined,
+        distance_m:      parsed.distance_m      || undefined,
+        reps:            parsed.reps            || undefined,
+        fatigue_level:   parsed.fatigue_level   || 5,
+        condition_level: parsed.condition_level || 7,
+        notes:           freeText,
+        created_at:      new Date().toISOString(),
+      })
 
-      const newSession = {
-        id: `ql_${Date.now()}`,
-        user_id: 'mock-user-1',
-        session_date: new Date().toISOString().slice(0, 10),
-        session_type: 'interval',
-        menu_items: validItems,
-        fatigue_level: fatigueVal,
-        condition_level: 6,
-        notes: (menuText + (notes ? '\n' + notes : '')) || undefined,
-        created_at: new Date().toISOString(),
-      }
-      sessions.unshift(newSession)
       await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
       Sounds.save()
       Toast.show({ type: 'success', text1: '練習を記録しました ✓', visibilityTime: 1800 })
-      setItems([newItem()]); setNotes(''); setFatigueVal(6)
+      setFreeText('')
       onSaved?.()
       onClose()
     } catch {
-      Toast.show({ type: 'error', text1: '保存に失敗しました' })
+      Toast.show({ type: 'error', text1: 'AI解析に失敗しました', text2: 'もう一度試してください' })
     } finally {
-      setSaving(false)
+      setParsing(false)
     }
   }
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <TouchableOpacity style={st.overlay} activeOpacity={1} onPress={onClose} />
+    <Modal visible={visible} transparent animationType="none" onRequestClose={handleClose}>
+      <TouchableOpacity style={st.overlay} activeOpacity={1} onPress={handleClose} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={st.kvWrapper}
@@ -132,118 +115,41 @@ export default function QuickLogModal({ visible, onClose, onSaved }: Props) {
           <View style={st.handle} />
           <View style={st.header}>
             <Text style={st.title}>今日の練習を記録</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <TouchableOpacity onPress={handleClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close" size={22} color={TEXT.secondary} />
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <Text style={st.hint}>
+            自由に入力してください — AIが自動で整理します
+          </Text>
 
-            {/* ── メニューリスト ── */}
-            <Text style={st.stepLabel}>① やったメニュー</Text>
-            {items.map((item, idx) => (
-              <View key={item.id} style={st.itemCard}>
-                <View style={st.itemHeader}>
-                  <Text style={st.itemNum}>種目 {idx + 1}</Text>
-                  {items.length > 1 && (
-                    <TouchableOpacity onPress={() => removeItem(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                      <Ionicons name="trash-outline" size={16} color="#FF3B30" />
-                    </TouchableOpacity>
-                  )}
-                </View>
+          <TextInput
+            style={st.input}
+            value={freeText}
+            onChangeText={setFreeText}
+            multiline
+            autoFocus
+            placeholder={'例:\n400m × 5本 レスト3分 68秒\n疲労7 脚が重かった\n\n「ジョグ10km」だけでもOK'}
+            placeholderTextColor={TEXT.hint}
+            textAlignVertical="top"
+          />
 
-                {/* 種目名 */}
-                <TextInput
-                  style={st.nameInput}
-                  value={item.name}
-                  onChangeText={v => updateItem(item.id, 'name', v)}
-                  placeholder="例: 100mインターバル、坂道走..."
-                  placeholderTextColor={TEXT.hint}
-                  autoCapitalize="none"
-                />
-
-                {/* 距離 + 単位 + 本数 */}
-                <View style={st.rowInputs}>
-                  <TextInput
-                    style={[st.numInput, { flex: 2 }]}
-                    value={item.distance}
-                    onChangeText={v => updateItem(item.id, 'distance', v)}
-                    placeholder="距離"
-                    placeholderTextColor={TEXT.hint}
-                    keyboardType="decimal-pad"
-                    maxLength={6}
-                  />
-                  <TouchableOpacity
-                    style={st.unitToggle}
-                    onPress={() => toggleUnit(item.id, item.unit)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={st.unitText}>{item.unit}</Text>
-                    <Ionicons name="swap-horizontal" size={12} color={BRAND} />
-                  </TouchableOpacity>
-                  <TextInput
-                    style={[st.numInput, { flex: 1.5 }]}
-                    value={item.sets}
-                    onChangeText={v => updateItem(item.id, 'sets', v.replace(/\D/g, ''))}
-                    placeholder="本数"
-                    placeholderTextColor={TEXT.hint}
-                    keyboardType="number-pad"
-                    maxLength={3}
-                  />
-                  <Text style={st.unitLabel}>本</Text>
-                </View>
-              </View>
-            ))}
-
-            {/* ＋ 種目を追加 */}
-            <TouchableOpacity style={st.addBtn} onPress={addItem} activeOpacity={0.7}>
-              <Ionicons name="add-circle-outline" size={18} color={BRAND} />
-              <Text style={st.addBtnText}>種目を追加</Text>
-            </TouchableOpacity>
-
-            {/* ── 疲労度 ── */}
-            <Text style={st.stepLabel}>② 疲労度は？</Text>
-            <View style={st.fatigueRow}>
-              {FATIGUE_EMOJIS.map(f => {
-                const active = fatigueVal === f.value
-                return (
-                  <TouchableOpacity
-                    key={f.value}
-                    activeOpacity={0.7}
-                    onPress={() => { unlockAudio(); Sounds.pop(); setFatigueVal(f.value) }}
-                    style={[st.fatigueBtn, active && st.fatigueBtnActive]}
-                  >
-                    <Text style={[st.fatigueEmoji, !active && { opacity: 0.45 }]}>{f.emoji}</Text>
-                    <Text style={[st.fatigueLabel, { color: active ? '#fff' : TEXT.hint }]}>{f.label}</Text>
-                  </TouchableOpacity>
-                )
-              })}
-            </View>
-
-            {/* ── メモ ── */}
-            <Text style={st.stepLabel}>メモ（任意）</Text>
-            <TextInput
-              style={[st.nameInput, { height: 64, textAlignVertical: 'top', paddingTop: 10 }]}
-              value={notes}
-              onChangeText={setNotes}
-              placeholder="今日の練習について..."
-              placeholderTextColor={TEXT.hint}
-              multiline
-              numberOfLines={2}
-              maxLength={200}
-            />
-
-            {/* 保存 */}
-            <TouchableOpacity
-              style={[st.saveBtn, saving && { opacity: 0.6 }]}
-              activeOpacity={0.85}
-              onPress={handleSave}
-              disabled={saving}
-            >
-              <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={st.saveBtnText}>{saving ? '保存中...' : '記録する'}</Text>
-            </TouchableOpacity>
-          </ScrollView>
+          <TouchableOpacity
+            style={[st.saveBtn, (!freeText.trim() || parsing) && { opacity: 0.4 }]}
+            activeOpacity={0.85}
+            onPress={handleSave}
+            disabled={!freeText.trim() || parsing}
+          >
+            {parsing ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="sparkles" size={18} color="#fff" />
+                <Text style={st.saveBtnText}>AIで記録する</Text>
+              </>
+            )}
+          </TouchableOpacity>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
@@ -251,13 +157,12 @@ export default function QuickLogModal({ visible, onClose, onSaved }: Props) {
 }
 
 const st = StyleSheet.create({
-  overlay:   { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
-  kvWrapper: { flex: 1, justifyContent: 'flex-end' },
+  overlay:    { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  kvWrapper:  { flex: 1, justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#111',
     borderTopLeftRadius: 20, borderTopRightRadius: 20,
     paddingHorizontal: 16, paddingBottom: 40,
-    maxHeight: '92%',
     borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
   },
   handle: {
@@ -265,48 +170,21 @@ const st = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignSelf: 'center', marginTop: 10, marginBottom: 6,
   },
-  header:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
-  title:     { color: '#fff', fontSize: 17, fontWeight: '800' },
-  stepLabel: { color: TEXT.hint, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginTop: 16, marginBottom: 8 },
-
-  itemCard: {
-    backgroundColor: SURFACE2, borderRadius: 12, padding: 12,
-    marginBottom: 10, borderWidth: 1, borderColor: DIVIDER, gap: 8,
+  header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  title:      { color: '#fff', fontSize: 17, fontWeight: '800' },
+  hint:       { color: TEXT.hint, fontSize: 13, marginBottom: 12, lineHeight: 18 },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    color: '#fff', fontSize: 15, lineHeight: 24,
+    borderWidth: 1, borderColor: 'rgba(74,159,255,0.3)',
+    height: 160,
+    marginBottom: 16,
   },
-  itemHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  itemNum:    { color: TEXT.hint, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-
-  nameInput: {
-    backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 10,
-    color: '#fff', fontSize: 14,
-    borderWidth: 1, borderColor: DIVIDER,
+  saveBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 16,
   },
-  rowInputs: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  numInput: {
-    backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 10,
-    color: '#fff', fontSize: 14, textAlign: 'center',
-    borderWidth: 1, borderColor: DIVIDER,
-  },
-  unitToggle: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(255,51,51,0.12)', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 10,
-    borderWidth: 1, borderColor: 'rgba(255,51,51,0.3)',
-  },
-  unitText:  { color: BRAND, fontSize: 13, fontWeight: '800' },
-  unitLabel: { color: TEXT.secondary, fontSize: 13 },
-
-  addBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderWidth: 1, borderColor: 'rgba(255,51,51,0.3)', borderRadius: 12, borderStyle: 'dashed' },
-  addBtnText: { color: BRAND, fontSize: 14, fontWeight: '700' },
-
-  fatigueRow:       { flexDirection: 'row', gap: 6 },
-  fatigueBtn:       { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: DIVIDER, backgroundColor: SURFACE2 },
-  fatigueBtnActive: { backgroundColor: '#1a1a1a', borderColor: 'rgba(255,255,255,0.3)' },
-  fatigueEmoji:     { fontSize: 22 },
-  fatigueLabel:     { fontSize: 10, fontWeight: '600', marginTop: 3 },
-
-  saveBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, marginTop: 20 },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 })
