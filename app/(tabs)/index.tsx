@@ -193,7 +193,6 @@ function ConditionEmojiInput({ value, onChange }: { value: number; onChange: (v:
                 onPress={() => {
                   unlockAudio(); Sounds.pop()
                   onChange(e.value); bounce(i)
-                  Toast.show({ type: 'success', text1: `体調: ${e.label}`, visibilityTime: 1200 })
                 }}
                 style={[s.emojiBtn, isActive && { backgroundColor: SURFACE2, borderColor: 'rgba(255,255,255,0.25)' }]}
               >
