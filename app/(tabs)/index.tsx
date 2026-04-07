@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import Toast from 'react-native-toast-message'
+import { useTheme } from '../../context/ThemeContext'
 
 import { useTrainingSessions } from '../../hooks/useTrainingSessions'
 import { calcInjuryRisk } from '../../lib/injuryRisk'
@@ -295,6 +296,7 @@ const MOCK_USER_ID = 'mock-user-1'
 
 export default function DashboardScreen() {
   const router = useRouter()
+  const { colors } = useTheme()
   const { sessions, loading, fetchSessions } = useTrainingSessions()
   const [showQuickLog, setShowQuickLog] = useState(false)
   const [conditionLevel, setConditionLevel] = useState(6)
@@ -364,7 +366,7 @@ export default function DashboardScreen() {
   const isLoading = loading === 'idle' || loading === 'loading'
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView ref={scrollRef} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 

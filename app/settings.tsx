@@ -11,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useRouter } from 'expo-router'
 
 import { useAuth } from '../context/AuthContext'
+import { useTheme } from '../context/ThemeContext'
 import AnimatedSection from '../components/AnimatedSection'
 
 const PROFILE_KEY   = 'trackmate_my_profile'
@@ -130,6 +131,7 @@ function LabeledInput({
 // ── メイン設定画面 ─────────────────────────────────────────
 export default function SettingsScreen() {
   const { user, signOut } = useAuth()
+  const { scheme, toggle: toggleTheme } = useTheme()
   const router = useRouter()
 
   // プロフィール
@@ -335,6 +337,46 @@ export default function SettingsScreen() {
                 <Text style={styles.actionText}>コーチ ↔ 選手を切り替え</Text>
                 <Ionicons name="chevron-forward" size={16} color="#555" />
               </TouchableOpacity>
+            </SectionCard>
+          </AnimatedSection>
+
+          {/* ── 画面テーマ ────────────────────────────────────── */}
+          <AnimatedSection delay={150}>
+            <SectionCard title="画面テーマ">
+              <View style={styles.switchRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Text style={{ fontSize: 20 }}>{scheme === 'dark' ? '🌙' : '☀️'}</Text>
+                  <Text style={styles.switchLabel}>{scheme === 'dark' ? 'ダークモード' : 'ライトモード'}</Text>
+                </View>
+                <Switch
+                  value={scheme === 'light'}
+                  onValueChange={toggleTheme}
+                  trackColor={{ false: '#333', true: '#E53E3E' }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={[{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1 },
+                    scheme === 'dark'
+                      ? { backgroundColor: '#222', borderColor: '#E53E3E' }
+                      : { backgroundColor: '#f0f0f0', borderColor: 'rgba(0,0,0,0.1)' }
+                  ]}
+                  onPress={() => scheme !== 'dark' && toggleTheme()}
+                >
+                  <Text style={{ color: scheme === 'dark' ? '#fff' : '#999', fontWeight: '700', fontSize: 13 }}>🌙 ダーク</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[{ flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center', borderWidth: 1 },
+                    scheme === 'light'
+                      ? { backgroundColor: '#fff', borderColor: '#E53E3E' }
+                      : { backgroundColor: '#1a1a1a', borderColor: 'rgba(255,255,255,0.1)' }
+                  ]}
+                  onPress={() => scheme !== 'light' && toggleTheme()}
+                >
+                  <Text style={{ color: scheme === 'light' ? '#111' : '#666', fontWeight: '700', fontSize: 13 }}>☀️ ライト</Text>
+                </TouchableOpacity>
+              </View>
             </SectionCard>
           </AnimatedSection>
 

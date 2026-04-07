@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Toast from 'react-native-toast-message'
 import { TEXT } from '../../lib/theme'
+import { useTheme } from '../../context/ThemeContext'
 import { Sounds, unlockAudio } from '../../lib/sounds'
 import { useRouter } from 'expo-router'
 import TrainingChart from '../../components/TrainingChart'
@@ -76,6 +77,7 @@ function SessionCard({ session }: { session: TrainingSession }) {
 
 export default function NotebookScreen() {
   const router = useRouter()
+  const { colors } = useTheme()
   const [sessions, setSessions] = useState<TrainingSession[]>([])
   const [loading, setLoading]   = useState(true)
   const [modal, setModal]       = useState(false)
@@ -163,7 +165,7 @@ export default function NotebookScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#0a0a0a' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaView style={{ flex: 1 }}>
 
         {/* ── ヘッダー ── */}
@@ -259,7 +261,7 @@ export default function NotebookScreen() {
 
         {/* ── 入力モーダル ── */}
         <Modal visible={modal} animationType="slide" presentationStyle="pageSheet">
-          <SafeAreaView style={s.modalSafe}>
+          <SafeAreaView style={[s.modalSafe, { backgroundColor: colors.bg }]}>
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
               <View style={s.modalContent}>
                 <View style={s.modalHeader}>
@@ -342,7 +344,7 @@ const s = StyleSheet.create({
   emptyText:   { color: TEXT.hint, fontSize: 15 },
   emptySubText:{ color: TEXT.hint, fontSize: 12, textAlign: 'center' },
 
-  modalSafe:    { flex: 1, backgroundColor: '#0a0a0a' },
+  modalSafe:    { flex: 1, backgroundColor: '#0a0a0a' }, // theme applied inline
   modalContent: { flex: 1, padding: 20 },
   modalHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   modalTitle:   { color: '#fff', fontSize: 17, fontWeight: '800' },

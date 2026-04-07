@@ -7,6 +7,7 @@ import * as Font from 'expo-font'
 import * as SplashScreen from 'expo-splash-screen'
 import { Ionicons } from '@expo/vector-icons'
 import { AuthProvider, useAuth } from '../context/AuthContext'
+import { ThemeProvider } from '../context/ThemeContext'
 import SplashAnimation from '../components/SplashAnimation'
 import { initOneSignal, requestPushPermission } from '../lib/notify'
 
@@ -212,8 +213,10 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </ThemeProvider>
   )
 }
