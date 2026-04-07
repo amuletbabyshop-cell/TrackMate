@@ -376,8 +376,8 @@ export default function DashboardScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Logo size={38} />
                 <View>
-                  <Text style={s.appTitle}>TrackMate</Text>
-                  <Text style={s.dateText}>{todayStr}</Text>
+                  <Text style={[s.appTitle, { color: colors.text }]}>TrackMate</Text>
+                  <Text style={[s.dateText, { color: colors.textSec }]}>{todayStr}</Text>
                 </View>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -425,18 +425,18 @@ export default function DashboardScreen() {
           <AnimatedEntry delay={440}>
             <GlassCard>
               <View style={s.row}>
-                <Text style={s.sectionLabel}>RECENT SESSIONS</Text>
+                <Text style={[s.sectionLabel, { color: colors.textSec }]}>RECENT SESSIONS</Text>
                 <PressableScale haptic="light" onPress={() => router.push('/(tabs)/notebook')}>
-                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>すべて →</Text>
+                  <Text style={{ color: colors.text, fontSize: 12, fontWeight: '600' }}>すべて →</Text>
                 </PressableScale>
               </View>
               {isLoading ? (
                 <View style={{ gap: 8 }}>{[0,1,2].map(i => <SkeletonRect key={i} height={48} />)}</View>
               ) : sessions.length === 0 ? (
                 <View style={{ alignItems: 'center', gap: 8, paddingVertical: 20 }}>
-                  <Ionicons name="calendar-outline" size={28} color={TEXT.hint} />
-                  <Text style={{ color: TEXT.hint, fontSize: 14 }}>練習記録がありません</Text>
-                  <Text style={{ color: TEXT.hint, fontSize: 12 }}>ノートタブから記録を追加しよう</Text>
+                  <Ionicons name="calendar-outline" size={28} color={colors.textHint} />
+                  <Text style={{ color: colors.textHint, fontSize: 14 }}>練習記録がありません</Text>
+                  <Text style={{ color: colors.textHint, fontSize: 12 }}>ノートタブから記録を追加しよう</Text>
                 </View>
               ) : (
                 sessions.slice(0, 3).map((sess, idx) => (
@@ -449,7 +449,7 @@ export default function DashboardScreen() {
                       <Text style={s.sessionTagText}>{SESSION_TYPE_LABEL[sess.session_type] ?? sess.session_type}</Text>
                     </View>
                     <View style={{ flex: 1, gap: 2 }}>
-                      <Text style={{ color: TEXT.hint, fontSize: 11 }}>{sess.session_date}</Text>
+                      <Text style={{ color: colors.textHint, fontSize: 11 }}>{sess.session_date}</Text>
                       {sess.distance_m
                         ? <Text style={s.sessionDetail}>{formatKm(sess.distance_m)}</Text>
                         : sess.time_ms
@@ -470,13 +470,13 @@ export default function DashboardScreen() {
           {/* ── AI診断（小さく、最下部） ── */}
           <AnimatedEntry delay={500}>
             <PressableScale haptic="light" scaleAmount={0.98} onPress={() => { unlockAudio(); Sounds.whoosh(); router.push('/ai-diagnosis') }}>
-              <View style={s.aiRow}>
+              <View style={[s.aiRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <Text style={{ fontSize: 16 }}>🤖</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.aiTitle}>AIが今週の練習を分析</Text>
-                  <Text style={s.aiSub}>疲労パターン・改善提案・来週の強度設定</Text>
+                  <Text style={[s.aiTitle, { color: colors.text }]}>AIが今週の練習を分析</Text>
+                  <Text style={[s.aiSub, { color: colors.textSec }]}>疲労パターン・改善提案・来週の強度設定</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={14} color={TEXT.hint} />
+                <Ionicons name="chevron-forward" size={14} color={colors.textHint} />
               </View>
             </PressableScale>
           </AnimatedEntry>
@@ -510,8 +510,8 @@ const s = StyleSheet.create({
 
   // Header
   header:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },
-  appTitle:  { color: '#fff', fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
-  dateText:  { color: TEXT.secondary, fontSize: 12, marginTop: 1 },
+  appTitle:  { fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  dateText:  { fontSize: 12, marginTop: 1 },
   avatarBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: SURFACE, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
