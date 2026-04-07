@@ -12,6 +12,54 @@ import { Sounds, unlockAudio } from '../lib/sounds'
 import Toast from 'react-native-toast-message'
 
 const SESSIONS_KEY = 'trackmate_sessions'
+const TASKS_KEY    = 'trackmate_tasks'
+
+/** セッション内容に基づいてルールベースの改善タスクを生成 */
+function generateTasks(sessionType: string, fatigueLevel: number, notes: string): string[] {
+  const tasks: string[] = []
+
+  // 疲労が高い → 回復系タスク
+  if (fatigueLevel >= 8) {
+    tasks.push('今夜は7時間以上の睡眠を確保しよう')
+    tasks.push('アイスバスまたは軽いストレッチで回復を促そう')
+  } else if (fatigueLevel >= 6) {
+    tasks.push('練習後のストレッチを10分しっかり行おう')
+  }
+
+  // 種目別タスク
+  if (sessionType === 'interval' || sessionType === 'sprint') {
+    tasks.push('次の練習は軽いジョグか休養にしよう（インターバル翌日）')
+  } else if (sessionType === 'long') {
+    tasks.push('長距離後は糖質+たんぱく質の補給を忘れずに')
+  } else if (sessionType === 'race') {
+    tasks.push('レース後は2〜3日間は強度を落として調整しよう')
+  } else if (sessionType === 'strength') {
+    tasks.push('筋トレ後は48時間の筋肉回復時間を確保しよう')
+  }
+
+  // ノートに特定キーワードがあれば
+  if (notes.includes('痛') || notes.includes('違和感')) {
+    tasks.push('痛みや違和感が続く場合は早めに医師に相談しよう')
+  }
+
+  return tasks.slice(0, 3)
+}
+
+async function saveTasks(newTexts: string[]) {
+  if (newTexts.length === 0) return
+  try {
+    const raw = await AsyncStorage.getItem(TASKS_KEY)
+    const existing = raw ? JSON.parse(raw) : []
+    const newTasks = newTexts.map(text => ({
+      id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      text,
+      completed: false,
+      created_at: new Date().toISOString(),
+    }))
+    const merged = [...newTasks, ...existing].slice(0, 20)  // 最大20件
+    await AsyncStorage.setItem(TASKS_KEY, JSON.stringify(merged))
+  } catch { /* ignore */ }
+}
 
 interface Props {
   visible: boolean
@@ -103,6 +151,15 @@ JSONのみ返答（説明不要）:
       })
 
       await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+
+      // 改善タスクを自動生成してホーム画面に表示
+      const taskTexts = generateTasks(
+        parsed.session_type || 'easy',
+        parsed.fatigue_level || 5,
+        freeText,
+      )
+      await saveTasks(taskTexts)
+
       Sounds.save()
       Toast.show({ type: 'success', text1: '練習を記録しました ✓', visibilityTime: 1800 })
       setFreeText('')

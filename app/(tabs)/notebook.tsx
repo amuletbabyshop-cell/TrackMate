@@ -16,8 +16,32 @@ import TrainingChart from '../../components/TrainingChart'
 import type { TrainingSession, ChartDataPoint } from '../../types'
 
 const SESSIONS_KEY = 'trackmate_sessions'
+const TASKS_KEY    = 'trackmate_tasks'
 const BRAND        = '#E53935'
 const MOCK_USER_ID = 'mock-user-1'
+
+async function saveImprovementTasks(sessionType: string, fatigue: number, notes: string) {
+  const texts: string[] = []
+  if (fatigue >= 8) texts.push('今夜は7時間以上の睡眠を確保しよう')
+  if (fatigue >= 6) texts.push('練習後のストレッチを10分しっかり行おう')
+  if (sessionType === 'interval' || sessionType === 'sprint')
+    texts.push('次の練習は軽いジョグか休養にしよう（インターバル翌日）')
+  if (sessionType === 'long') texts.push('長距離後は糖質+たんぱく質の補給を忘れずに')
+  if (sessionType === 'race') texts.push('レース後は2〜3日間は強度を落として調整しよう')
+  if (notes.includes('痛') || notes.includes('違和感'))
+    texts.push('痛みや違和感が続く場合は早めに医師に相談しよう')
+
+  if (texts.length === 0) return
+  try {
+    const raw = await AsyncStorage.getItem(TASKS_KEY)
+    const existing = raw ? JSON.parse(raw) : []
+    const newTasks = texts.slice(0, 3).map(text => ({
+      id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      text, completed: false, created_at: new Date().toISOString(),
+    }))
+    await AsyncStorage.setItem(TASKS_KEY, JSON.stringify([...newTasks, ...existing].slice(0, 20)))
+  } catch { /* ignore */ }
+}
 
 const TYPE_INFO: Record<string, { label: string; color: string }> = {
   interval: { label: 'インターバル', color: '#E53935' },
@@ -153,6 +177,8 @@ export default function NotebookScreen() {
         AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(next)).catch(() => {})
         return next
       })
+      // 改善タスク生成
+      saveImprovementTasks(newSession.session_type, newSession.fatigue_level ?? 5, freeText)
       Sounds.save()
       setFreeText(''); setModal(false)
       Toast.show({ type: 'success', text1: '練習を記録しました ✓', visibilityTime: 1500 })
