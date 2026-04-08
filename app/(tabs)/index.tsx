@@ -2,8 +2,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFocusEffect } from '@react-navigation/native'
 import {
-  Animated, Easing, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  ActivityIndicator, Animated, Easing, Modal,
+  ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { SafeAreaView } from 'react-native-safe-area-context'
@@ -278,6 +278,9 @@ export default function DashboardScreen() {
   const [sleepRecords,    setSleepRecords]    = useState<SleepRecord[]>([])
   const [hasSymptom,      setHasSymptom]      = useState(false)
   const [tasks,           setTasks]           = useState<ImprovementTask[]>([])
+  const [showAIAdvice,    setShowAIAdvice]    = useState(false)
+  const [aiAdvice,        setAiAdvice]        = useState('')
+  const [loadingAI,       setLoadingAI]       = useState(false)
 
   // ── 永続データ読み込み ──
   useEffect(() => {
@@ -307,6 +310,95 @@ export default function DashboardScreen() {
       AsyncStorage.setItem(TASKS_KEY, JSON.stringify(next)).catch(() => {})
       return next
     })
+  }
+
+  // ── AIコーチアドバイス ──────────────────────────────────
+  async function handleGetAIAdvice() {
+    setLoadingAI(true)
+    setShowAIAdvice(true)
+    setAiAdvice('')
+    try {
+      const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY
+      const today  = new Date().toISOString().slice(0, 10)
+
+      // 直近7日の練習データ
+      const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10)
+      const recentSessions = sessions.filter(s => s.session_date >= sevenDaysAgo).slice(0, 10)
+
+      // 睡眠データ
+      const recentSleep = sleepRecords.slice(0, 7)
+
+      // リスクスコア
+      const riskLabel = riskResult
+        ? `${riskResult.riskScore}/100（${riskResult.label}）`
+        : '未計算'
+
+      const conditionLabel = ['きつい','','しんどい','','ふつう','','いい感じ','','絶好調',''][conditionLevel - 1] ?? 'ふつう'
+
+      const sessionsText = recentSessions.length > 0
+        ? recentSessions.map(s =>
+            `${s.session_date}: ${SESSION_TYPE_LABEL[s.session_type] ?? s.session_type}` +
+            (s.distance_m ? ` ${(s.distance_m/1000).toFixed(1)}km` : '') +
+            (s.fatigue_level ? ` 疲労${s.fatigue_level}` : '') +
+            (s.notes ? ` 備考:${s.notes.slice(0, 30)}` : '')
+          ).join('\n')
+        : '記録なし'
+
+      const sleepText = recentSleep.length > 0
+        ? recentSleep.map(r => `${r.date}: ${r.duration_hours ?? '?'}h`).join(', ')
+        : '記録なし'
+
+      const prompt = `あなたは陸上競技の専門コーチです。以下のデータをもとに、選手へのアドバイスを日本語で3〜5項目、具体的かつ実践的に提供してください。
+
+【今日の日付】${today}
+【今日の体調】${conditionLabel}（${conditionLevel}/10）
+【怪我リスクスコア】${riskLabel}
+【直近7日の練習記録】
+${sessionsText}
+【直近7日の睡眠】${sleepText}
+【体の痛み・違和感】${hasSymptom ? 'あり（直近7日以内）' : 'なし'}
+
+アドバイスは以下の観点を含めてください：
+1. 今週の練習の評価・総評
+2. 疲労・リカバリーへのアドバイス
+3. 来週に向けての練習方針
+4. 食事・睡眠・生活習慣のアドバイス（あれば）
+5. 注意すべき点
+
+回答は各項目を絵文字＋見出し付きで、読みやすくまとめてください。`
+
+      if (apiKey) {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 800,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setAiAdvice(data.content?.[0]?.text ?? 'アドバイスを取得できませんでした')
+        } else {
+          setAiAdvice('APIエラーが発生しました。しばらくしてから再試行してください。')
+        }
+      } else {
+        // APIキー未設定時のデモアドバイス
+        setAiAdvice(
+          `🏃 **今週の練習評価**\n記録データをもとに分析しました。\n\n💪 **リカバリーについて**\n疲労度が高い日が続いているため、明日は軽いジョグかオフにしましょう。\n\n📅 **来週の練習方針**\n強度の高い練習（インターバルなど）は週2回以内に抑え、ジョグ・ドリルを中心に体を整えましょう。\n\n🍽️ **食事・睡眠**\n練習後30分以内にたんぱく質（鶏肉・牛乳など）を補給すると回復が早まります。睡眠は7〜8時間を目標に。\n\n⚠️ **注意点**\n体に違和感がある場合は無理せず休養を優先してください。AIコーチ機能はAPIキー設定後にフル活用できます。`
+        )
+      }
+    } catch {
+      setAiAdvice('データの取得に失敗しました。もう一度お試しください。')
+    } finally {
+      setLoadingAI(false)
+    }
   }
 
   const handleConditionChange = useCallback((v: number) => {
@@ -374,8 +466,53 @@ export default function DashboardScreen() {
             <TasksCard tasks={tasks} onToggle={toggleTask} />
           </AnimatedEntry>
 
-          {/* ── 直近の練習 ── */}
+          {/* ── クイックリンク ── */}
           <AnimatedEntry delay={240}>
+            <View style={s.quickLinks}>
+              {[
+                { icon: '🩹', label: 'リカバリー', route: '/recovery' },
+                { icon: '📹', label: 'フォーム分析', route: '/video-analysis' },
+                { icon: '🍽️', label: '食事記録', route: '/(tabs)/nutrition' },
+                { icon: '📊', label: 'カレンダー', route: '/(tabs)/calendar' },
+              ].map(item => (
+                <PressableScale
+                  key={item.label}
+                  haptic="light"
+                  scaleAmount={0.94}
+                  onPress={() => { unlockAudio(); Sounds.tap(); router.push(item.route as any) }}
+                  style={{ flex: 1 }}
+                >
+                  <View style={[s.quickLink, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={{ fontSize: 20 }}>{item.icon}</Text>
+                    <Text style={[s.quickLinkLabel, { color: colors.textSec }]}>{item.label}</Text>
+                  </View>
+                </PressableScale>
+              ))}
+            </View>
+          </AnimatedEntry>
+
+          {/* ── AIコーチ ── */}
+          <AnimatedEntry delay={300}>
+            <TouchableOpacity
+              style={[s.aiCoachBtn, { backgroundColor: colors.surface, borderColor: 'rgba(74,159,255,0.4)' }]}
+              activeOpacity={0.85}
+              onPress={() => { unlockAudio(); Sounds.tap(); handleGetAIAdvice() }}
+            >
+              <View style={s.aiCoachInner}>
+                <View style={s.aiCoachIcon}>
+                  <Text style={{ fontSize: 22 }}>🤖</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.aiCoachTitle, { color: colors.text }]}>AIコーチにアドバイスをもらう</Text>
+                  <Text style={[s.aiCoachSub, { color: colors.textHint }]}>体調・練習・睡眠データから総合分析</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textHint} />
+              </View>
+            </TouchableOpacity>
+          </AnimatedEntry>
+
+          {/* ── 直近の練習（一番下） ── */}
+          <AnimatedEntry delay={360}>
             <GlassCard>
               <View style={s.sectionRow}>
                 <Text style={[s.sectionLabel, { color: colors.textHint }]}>最近の練習</Text>
@@ -439,31 +576,6 @@ export default function DashboardScreen() {
             </GlassCard>
           </AnimatedEntry>
 
-          {/* ── クイックリンク ── */}
-          <AnimatedEntry delay={300}>
-            <View style={s.quickLinks}>
-              {[
-                { icon: '🩹', label: 'リカバリー', route: '/recovery' },
-                { icon: '📹', label: 'フォーム分析', route: '/video-analysis' },
-                { icon: '🍽️', label: '食事記録', route: '/(tabs)/nutrition' },
-                { icon: '🤖', label: 'AI診断', route: '/ai-diagnosis' },
-              ].map(item => (
-                <PressableScale
-                  key={item.label}
-                  haptic="light"
-                  scaleAmount={0.94}
-                  onPress={() => { unlockAudio(); Sounds.tap(); router.push(item.route as any) }}
-                  style={{ flex: 1 }}
-                >
-                  <View style={[s.quickLink, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <Text style={{ fontSize: 20 }}>{item.icon}</Text>
-                    <Text style={[s.quickLinkLabel, { color: colors.textSec }]}>{item.label}</Text>
-                  </View>
-                </PressableScale>
-              ))}
-            </View>
-          </AnimatedEntry>
-
         </ScrollView>
       </SafeAreaView>
 
@@ -484,6 +596,62 @@ export default function DashboardScreen() {
           loadTasks()
         }}
       />
+
+      {/* ── AIコーチ アドバイスモーダル ── */}
+      <Modal visible={showAIAdvice} transparent animationType="slide" onRequestClose={() => setShowAIAdvice(false)}>
+        <View style={s.modalOverlay}>
+          <View style={[s.modalSheet, { backgroundColor: colors.surface }]}>
+            {/* ヘッダー */}
+            <View style={s.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 22 }}>🤖</Text>
+                <Text style={[s.modalTitle, { color: colors.text }]}>AIコーチからのアドバイス</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowAIAdvice(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Ionicons name="close" size={22} color={colors.textSec} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+              {loadingAI ? (
+                <View style={{ alignItems: 'center', paddingVertical: 60, gap: 16 }}>
+                  <ActivityIndicator size="large" color={BRAND} />
+                  <Text style={{ color: colors.textHint, fontSize: 13 }}>データを分析中…</Text>
+                </View>
+              ) : (
+                <View style={{ paddingBottom: 40 }}>
+                  {aiAdvice.split('\n').map((line, i) => {
+                    const isBold = line.startsWith('**') || /^[🏃💪📅🍽️⚠️🎯🔥💤]/.test(line)
+                    return (
+                      <Text
+                        key={i}
+                        style={[
+                          s.adviceText,
+                          { color: isBold ? colors.text : colors.textSec },
+                          isBold && { fontWeight: '700', fontSize: 14, marginTop: 14 },
+                        ]}
+                      >
+                        {line.replace(/\*\*/g, '')}
+                      </Text>
+                    )
+                  })}
+                </View>
+              )}
+            </ScrollView>
+
+            {!loadingAI && (
+              <TouchableOpacity
+                style={[s.reloadBtn, { borderColor: 'rgba(74,159,255,0.4)' }]}
+                onPress={handleGetAIAdvice}
+              >
+                <Ionicons name="refresh" size={15} color="#4A9FFF" />
+                <Text style={{ color: '#4A9FFF', fontSize: 13, fontWeight: '700' }}>再取得</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       <PWAInstallPrompt />
     </View>
   )
@@ -518,5 +686,42 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     shadowColor: '#E53E3E', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8, zIndex: 100,
+  },
+
+  // AIコーチボタン
+  aiCoachBtn: {
+    borderRadius: 14, borderWidth: 1, overflow: 'hidden',
+  },
+  aiCoachInner: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 14,
+  },
+  aiCoachIcon: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: 'rgba(74,159,255,0.12)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  aiCoachTitle: { fontSize: 14, fontWeight: '800' },
+  aiCoachSub:   { fontSize: 11, marginTop: 2 },
+
+  // AIアドバイスモーダル
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16,
+    maxHeight: '85%',
+  },
+  modalHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 12, marginBottom: 8,
+  },
+  modalTitle: { fontSize: 16, fontWeight: '800' },
+  adviceText: { fontSize: 13, lineHeight: 21 },
+  reloadBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, borderWidth: 1, borderRadius: 12, paddingVertical: 12, marginTop: 8,
   },
 })
