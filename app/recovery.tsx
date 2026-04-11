@@ -141,7 +141,7 @@ export default function RecoveryScreen() {
         body: JSON.stringify({
           model:'claude-opus-4-5', max_tokens:2048,
           messages:[{ role:'user', content:
-`あなたはスポーツ医学専門医です。陸上競技選手の症状を診断してください。
+`あなたは陸上競技に詳しいスポーツトレーナーです。選手の症状をもとに、ケアと回復のアドバイスをしてください。医療診断ではなく、参考情報として提供してください。
 
 部位:${partLabels} / 痛みLv:${painLevel}/10 / 性質:${typeLabel} / タイミング:${timingLabel} / 期間:${durLabel}
 追加:${notes||'なし'}
@@ -206,6 +206,15 @@ export default function RecoveryScreen() {
         {/* ══ 症状入力 ══ */}
         {tab==='input' && (
           <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+
+            {/* ─ 免責バナー ─ */}
+            <View style={s.disclaimerBanner}>
+              <Ionicons name="warning-outline" size={15} color="#FF9500" />
+              <Text style={s.disclaimerBannerTxt}>
+                このアドバイスはAIによる参考情報です。医療診断・治療行為ではありません。{'\n'}
+                症状が続く・悪化する場合は必ず医師・専門家にご相談ください。
+              </Text>
+            </View>
 
             {/* ─ ワイヤーフレームボディマップ ─ */}
             <Text style={s.secTitle}>🫀 痛い部位をタップ
@@ -306,8 +315,8 @@ export default function RecoveryScreen() {
 
             <TouchableOpacity style={[s.submitBtn,loading&&{opacity:0.6}]} onPress={askAI} disabled={loading}>
               {loading
-                ? <><ActivityIndicator color="#fff"/><Text style={s.submitTxt}>スポーツ医学DBを参照中...</Text></>
-                : <><Ionicons name="medkit-outline" size={20} color="#fff"/><Text style={s.submitTxt}>AIスポーツドクターに相談</Text></>
+                ? <><ActivityIndicator color="#fff"/><Text style={s.submitTxt}>AIが分析中...</Text></>
+                : <><Ionicons name="body-outline" size={20} color="#fff"/><Text style={s.submitTxt}>AIにケアプランを相談する</Text></>
               }
             </TouchableOpacity>
           </ScrollView>
@@ -543,9 +552,18 @@ function BodySilhouette({ view }: { view:'front'|'back' }) {
 function ResultView({ result, onBack }: { result:RecoveryResult; onBack:()=>void }) {
   return (
     <>
+      {/* 免責バナー（結果画面） */}
+      <View style={s.disclaimerBanner}>
+        <Ionicons name="warning-outline" size={15} color="#FF9500" />
+        <Text style={s.disclaimerBannerTxt}>
+          このアドバイスはAIによる参考情報です。医療診断・治療行為ではありません。{'\n'}
+          症状が続く・悪化する場合は必ず医師・専門家にご相談ください。
+        </Text>
+      </View>
+
       <View style={[s.diagCard,{borderLeftColor:SEVERITY_COLOR[result.severity]}]}>
         <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-          <Text style={{color:'#888',fontSize:11,fontWeight:'800'}}>疑われる傷害</Text>
+          <Text style={{color:'#888',fontSize:11,fontWeight:'800'}}>疑われる症状</Text>
           <SevBadge severity={result.severity}/>
         </View>
         <Text style={{color:'#fff',fontSize:20,fontWeight:'900'}}>{result.suspected_condition}</Text>
@@ -589,7 +607,7 @@ function ResultView({ result, onBack }: { result:RecoveryResult; onBack:()=>void
       <Sec icon="alert-circle" title="病院を受診すべき症状" color="#FF3B30">
         {result.see_doctor_if.map((e,i)=><Bullet key={i} text={e} color="#FF3B30"/>)}
       </Sec>
-      <Sec icon="library"      title="医学的根拠" color="#666">
+      <Sec icon="library"      title="参考情報" color="#666">
         <Text style={{color:'#777',fontSize:12,lineHeight:20,fontStyle:'italic'}}>{result.medical_basis}</Text>
       </Sec>
       <TouchableOpacity style={s.reBtn} onPress={onBack}>
@@ -663,6 +681,8 @@ const s = StyleSheet.create({
   errorTxt:{color:'#FF3B30',fontSize:12,lineHeight:18,flex:1},
   disclaimer:{flexDirection:'row',alignItems:'flex-start',gap:6,marginTop:14,padding:10,backgroundColor:'rgba(255,255,255,0.03)',borderRadius:10},
   disclaimerTxt:{color:'#444',fontSize:11,lineHeight:16,flex:1},
+  disclaimerBanner:{flexDirection:'row',alignItems:'flex-start',gap:8,padding:12,backgroundColor:'rgba(255,149,0,0.1)',borderRadius:10,borderWidth:1,borderColor:'rgba(255,149,0,0.3)',marginBottom:16},
+  disclaimerBannerTxt:{color:'#FF9500',fontSize:11,lineHeight:17,flex:1},
   submitBtn:{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:'#E53935',borderRadius:16,paddingVertical:18,marginTop:16},
   submitTxt:{color:'#fff',fontSize:16,fontWeight:'800'},
 
