@@ -18,3 +18,10 @@
     "web": { "bundler": "metro" }
   }
 }
+{
+  "expo": {
+    "web": {
+      "publicPath": "/TrackMate/"
+    }
+  }
+}
