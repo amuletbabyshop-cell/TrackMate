@@ -15,13 +15,6 @@
       ["expo-image-picker", { "photosPermission": "食事・動画を記録するために写真ライブラリを使用します" }]
     ],
     "scheme": "trackmate",
-    "web": { "bundler": "metro" }
-  }
-}
-{
-  "expo": {
-    "web": {
-      "publicPath": "/TrackMate/"
-    }
+ "web": { "bundler": "metro", "publicPath": "/TrackMate/" }
   }
 }
