@@ -27,6 +27,12 @@ jobs:
         run: npx expo export -p web --output-dir dist
         env:
           CI: false
+          PUBLIC_URL: /TrackMate
+
+      - name: Fix asset paths in index.html
+        run: |
+          sed -i 's|src="/|src="/TrackMate/|g' dist/index.html
+          sed -i 's|href="/|href="/TrackMate/|g' dist/index.html
 
       - name: Add .nojekyll
         run: touch dist/.nojekyll
@@ -36,4 +42,3 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
-          
